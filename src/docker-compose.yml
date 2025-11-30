@@ -5,6 +5,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - /Users/jihunjang/Downloads/dataset/train:/datasets:ro
+      - /Users/jihunjang/Downloads/ust/dataset/train:/datasets:ro
     environment:
       - PYTHONPATH=/app

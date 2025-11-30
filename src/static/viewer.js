@@ -1,147 +1,128 @@
 (() => {
   const COCO_CLASSES = [
-    'person',          // 0
-    'fall_person',     // 1 (custom)
-    'bicycle',         // 2
-    'car',             // 3
-    'motorcycle',      // 4
-    'airplane',        // 5
-    'bus',             // 6
-    'train',           // 7
-    'truck',           // 8
-    'boat',            // 9
-    'traffic light',   // 10
-    'fire hydrant',    // 11
-    'stop sign',       // 12
-    'parking meter',   // 13
-    'bench',           // 14
-    'bird',            // 15
-    'cat',             // 16
-    'dog',             // 17
-    'horse',           // 18
-    'sheep',           // 19
-    'cow',             // 20
-    'elephant',        // 21
-    'bear',            // 22
-    'zebra',           // 23
-    'giraffe',         // 24
-    'backpack',        // 25
-    'umbrella',        // 26
-    'handbag',         // 27
-    'tie',             // 28
-    'suitcase',        // 29
-    'frisbee',         // 30
-    'skis',            // 31
-    'snowboard',       // 32
-    'sports ball',     // 33
-    'kite',            // 34
-    'baseball bat',    // 35
-    'baseball glove',  // 36
-    'skateboard',      // 37
-    'surfboard',       // 38
-    'tennis racket',   // 39
-    'bottle',          // 40
-    'wine glass',      // 41
-    'cup',             // 42
-    'fork',            // 43
-    'knife',           // 44
-    'spoon',           // 45
-    'bowl',            // 46
-    'banana',          // 47
-    'apple',           // 48
-    'sandwich',        // 49
-    'orange',          // 50
-    'broccoli',        // 51
-    'carrot',          // 52
-    'hot dog',         // 53
-    'pizza',           // 54
-    'donut',           // 55
-    'cake',            // 56
-    'chair',           // 57
-    'couch',           // 58
-    'potted plant',    // 59
-    'bed',             // 60
-    'dining table',    // 61
-    'toilet',          // 62
-    'tv',              // 63
-    'laptop',          // 64
-    'mouse',           // 65
-    'remote',          // 66
-    'keyboard',        // 67
-    'cell phone',      // 68
-    'microwave',       // 69
-    'oven',            // 70
-    'toaster',         // 71
-    'sink',            // 72
-    'refrigerator',    // 73
-    'book',            // 74
-    'clock',           // 75
-    'vase',            // 76
-    'scissors',        // 77
-    'teddy bear',      // 78
-    'hair drier',      // 79
-    'toothbrush'       // 80
+    'person', 'fall_person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep',
+    'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase',
+    'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard',
+    'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana',
+    'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+    'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+    'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
+    'hair drier', 'toothbrush'
   ];
 
+  const BATCH_SIZE = 4;
   const data = window.viewerData;
-  const images = data.images;
+  const mode = (data.mode || 'folder');
+  // Normalized images array
+  const images = Array.isArray(data.images)
+    ? data.images.map((item) => (typeof item === 'string' ? { rel_path: item } : item))
+    : [];
+  
   const total = images.length;
-  let index = 0;
-  let currentLabel = '';
-  let currentLabels = [];
-  let currentRequestId = 0;
+  let currentIndex = 0; // Starts at 0, increments by BATCH_SIZE
 
-  const imgEl = document.getElementById('display-image');
-  const canvas = document.getElementById('overlay');
-  const ctx = canvas.getContext('2d');
-  const labelList = document.getElementById('label-list');
-  const excludedList = document.getElementById('excluded-list');
-  const counter = document.getElementById('counter');
-  const paths = document.getElementById('paths');
-  const prevBtn = document.getElementById('prev-btn');
-  const nextBtn = document.getElementById('next-btn');
-  const excludeBtn = document.getElementById('exclude-btn');
-  const exportBtn = document.getElementById('export-btn');
-  const autoBtn = document.getElementById('auto-btn');
-  const classFilter = document.getElementById('class-filter');
-
-  const excluded = new Map();
-  const toast = document.getElementById('toast');
-  let toastTimeout = null;
+  // State
+  const excludedSet = new Map(); // Permenantly excluded: path -> reason/label
+  const selectedSet = new Set(); // Currently selected in UI (to be excluded)
   let autoInterval = null;
   let autoActive = false;
-  paths.textContent = `Images: ${data.img_dir}`;
+  let searchHighlightPath = null; // Path of the image to highlight (Green)
 
-  function updateCounter() {
-    counter.textContent = `Image ${index + 1} / ${total}`;
+  // DOM Elements
+  const gridContainer = document.getElementById('grid-container');
+  const counterEl = document.getElementById('counter');
+  const pathsEl = document.getElementById('paths');
+  const firstBtn = document.getElementById('first-btn');
+  const prevBtn = document.getElementById('prev-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const lastBtn = document.getElementById('last-btn');
+  const autoBtn = document.getElementById('auto-btn');
+  const excludeBtn = document.getElementById('exclude-btn');
+  const exportBtn = document.getElementById('export-btn');
+  const selectedCountEl = document.getElementById('selected-count');
+  const classFilter = document.getElementById('class-filter');
+  const searchInput = document.getElementById('search-input');
+  const toast = document.getElementById('toast');
+
+  let toastTimeout = null;
+
+  // -- Initialization --
+  try {
+    if (!images.length) {
+      showToast('No images loaded. Please check dataset path.', 'error');
+      console.error('Images array is empty:', data);
+    }
+
+    const metaParts = [];
+    if (mode === 'txt' && data.train_file) {
+      metaParts.push(`Train: ${data.train_file}`);
+    } else if (data.img_dir) {
+      metaParts.push(`Images: ${data.img_dir}`);
+    }
+    if (data.label_dir) {
+      metaParts.push(`Labels: ${data.label_dir}`);
+    }
+    
+    if (pathsEl) {
+        pathsEl.textContent = metaParts.join(' | ') || 'No paths info';
+    }
+
+    if (classFilter) {
+      COCO_CLASSES.forEach((name, idx) => {
+        const option = document.createElement('option');
+        option.value = String(idx);
+        option.textContent = `${idx}: ${name}`;
+        classFilter.appendChild(option);
+      });
+      classFilter.addEventListener('change', () => {
+        renderGrid(); // Re-render to update boxes based on filter
+      });
+    }
+  } catch (err) {
+      console.error("Initialization Error:", err);
+      showToast("Viewer init failed: " + err.message, 'error');
   }
+
+  // -- Core Functions --
 
   function showToast(message, type = 'info') {
     if (!toast) return;
     toast.textContent = message;
     toast.classList.remove('hidden');
-    if (type === 'error') {
-      toast.style.background = 'rgba(220, 38, 38, 0.95)';
-    } else {
-      toast.style.background = 'rgba(15, 118, 110, 0.95)';
-    }
-    if (toastTimeout) {
-      clearTimeout(toastTimeout);
-    }
+    toast.style.background = type === 'error' ? 'rgba(220, 38, 38, 0.95)' : 'rgba(15, 118, 110, 0.95)';
+    
+    if (toastTimeout) clearTimeout(toastTimeout);
     toastTimeout = setTimeout(() => {
       toast.classList.add('hidden');
-    }, 4000);
+    }, 3000);
   }
 
-  async function loadLabels(relPath) {
+  function updateCounter() {
+    const end = Math.min(currentIndex + BATCH_SIZE, total);
+    counterEl.textContent = `${currentIndex + 1} - ${end} / ${total}`;
+    selectedCountEl.textContent = selectedSet.size;
+    
+    excludeBtn.style.opacity = selectedSet.size > 0 ? '1' : '0.5';
+    excludeBtn.style.cursor = selectedSet.size > 0 ? 'pointer' : 'not-allowed';
+  }
+
+  function getSelectedClasses() {
+    if (!classFilter) return null;
+    const val = classFilter.value;
+    return val ? new Set([Number(val)]) : null;
+  }
+
+  async function fetchLabels(relPath) {
     const url = new URL('/api/labels', window.location.origin);
-    url.searchParams.set('img_dir', data.img_dir);
-    url.searchParams.set('label_dir', data.label_dir);
+    url.searchParams.set('mode', mode);
     url.searchParams.set('rel_path', relPath);
+    if (data.label_dir) url.searchParams.set('label_dir', data.label_dir);
+    if (mode === 'folder' && data.img_dir) url.searchParams.set('img_dir', data.img_dir);
+    else if (mode === 'txt' && data.train_file) url.searchParams.set('train_file', data.train_file);
+
     const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error('Failed to load labels');
-    }
+    if (!res.ok) throw new Error('No labels');
     return res.json();
   }
 
@@ -149,132 +130,328 @@
     const hue = (cls * 47) % 360;
     return {
       stroke: `hsl(${hue}, 72%, 55%)`,
-      fill: `hsla(${hue}, 72%, 55%, 0.22)`,
+      fill: `hsla(${hue}, 72%, 55%, 0.15)`,
       labelBg: `hsla(${hue}, 72%, 35%, 0.85)`
     };
   }
 
-  function getSelectedClasses() {
-    if (!classFilter) return null;
-    const selected = Array.from(classFilter.selectedOptions).map((opt) => opt.value).filter(Boolean);
-    if (!selected.length) return null;
-    return new Set(selected.map((val) => Number(val)));
-  }
-
-  function drawBoxes(labels) {
-    const width = imgEl.clientWidth;
-    const height = imgEl.clientHeight;
-    canvas.width = width;
-    canvas.height = height;
+  function drawBoxes(canvas, labels, img) {
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
 
-    ctx.lineWidth = 2;
-    ctx.font = '14px sans-serif';
+    // Calculate the actual rendered image dimensions and offsets within the img element
+    // Since object-fit: contain is used.
+    const naturalRatio = img.naturalWidth / img.naturalHeight;
+    const elementRatio = width / height;
+    
+    let renderWidth, renderHeight, offsetX, offsetY;
+
+    if (naturalRatio > elementRatio) {
+        // Image is wider than the container (constrained by width)
+        renderWidth = width;
+        renderHeight = width / naturalRatio;
+        offsetX = 0;
+        offsetY = (height - renderHeight) / 2;
+    } else {
+        // Image is taller than container (constrained by height)
+        renderWidth = height * naturalRatio;
+        renderHeight = height;
+        offsetX = (width - renderWidth) / 2;
+        offsetY = 0;
+    }
 
     const filterSet = getSelectedClasses();
 
     labels.forEach((item) => {
-      if (filterSet && !filterSet.has(item.class)) {
-        return;
-      }
+      if (filterSet && !filterSet.has(item.class)) return;
+
       const [xc, yc, w, h] = item.bbox;
-      const x = (xc - w / 2) * width;
-      const y = (yc - h / 2) * height;
-      const bw = w * width;
-      const bh = h * height;
+      
+      // Transform normalized coordinates (0~1) to Rendered Image Coordinates
+      // And then add the letterboxing offsets
+      const boxW = w * renderWidth;
+      const boxH = h * renderHeight;
+      const boxX = (xc * renderWidth) - (boxW / 2) + offsetX;
+      const boxY = (yc * renderHeight) - (boxH / 2) + offsetY;
+
       const colors = colorForClass(item.class);
+
+      // Box
+      ctx.lineWidth = 2;
       ctx.strokeStyle = colors.stroke;
       ctx.fillStyle = colors.fill;
-      ctx.strokeRect(x, y, bw, bh);
-      ctx.fillRect(x, y, bw, bh);
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+
+      // Label Tag
       const name = COCO_CLASSES[item.class] ?? `cls ${item.class}`;
       const labelText = `${item.class}: ${name}`;
-      const paddingX = 6;
-      const paddingY = 4;
+      
+      ctx.font = '12px Inter, sans-serif';
+      const padding = 4;
       const metrics = ctx.measureText(labelText);
-      const textHeight = 14;
-      const rectWidth = metrics.width + paddingX * 2;
-      const rectHeight = textHeight + paddingY * 2;
-      const boxX = Math.max(0, x);
-      const boxY = Math.max(0, y - rectHeight - 2);
+      const bgWidth = metrics.width + padding * 2;
+      const bgHeight = 16;
+      
+      const labelX = Math.max(offsetX, boxX); // Clamp to image area roughly
+      const labelY = Math.max(offsetY, boxY - bgHeight);
+
       ctx.fillStyle = colors.labelBg;
-      ctx.fillRect(boxX, boxY, rectWidth, rectHeight);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(labelText, boxX + paddingX, boxY + rectHeight - paddingY);
+      ctx.fillRect(labelX, labelY, bgWidth, bgHeight);
+      
+      ctx.fillStyle = '#fff';
+      ctx.textBaseline = 'top';
+      ctx.fillText(labelText, labelX + padding, labelY + 2);
     });
   }
 
-  function renderLabelList(labels, labelPath) {
-    labelList.innerHTML = '';
-    const header = document.createElement('li');
-    header.textContent = labelPath;
-    header.style.fontWeight = 'bold';
-    labelList.appendChild(header);
-
-    if (!labels.length) {
-      const li = document.createElement('li');
-      li.textContent = 'No boxes';
-      labelList.appendChild(li);
-      return;
+  function createGridItem(entry, index) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'grid-item';
+    
+    // Apply selection state
+    if (selectedSet.has(entry.rel_path)) {
+      wrapper.classList.add('selected');
     }
 
-    labels.forEach((item, idx) => {
-      const li = document.createElement('li');
-      const name = COCO_CLASSES[item.class] ?? `cls ${item.class}`;
-      li.textContent = `#${idx + 1} → ${item.class}: ${name}, bbox ${item.bbox.map((v) => v.toFixed(4)).join(', ')}`;
-      labelList.appendChild(li);
-    });
-  }
+    // Apply Search Highlight state
+    if (searchHighlightPath && entry.rel_path === searchHighlightPath) {
+        wrapper.classList.add('highlighted');
+    }
 
-  async function showImage(newIndex) {
-    if (!total) return;
-    index = (newIndex + total) % total;
-    const requestId = ++currentRequestId;
-    updateCounter();
-    const relPath = images[index];
-    currentLabel = '';
-    currentLabels = [];
-
+    // Image
+    const img = document.createElement('img');
+    img.className = 'grid-image';
+    img.loading = 'lazy';
+    
     const imgUrl = new URL('/image', window.location.origin);
-    imgUrl.searchParams.set('img_dir', data.img_dir);
-    imgUrl.searchParams.set('rel_path', relPath);
-    imgEl.src = imgUrl.toString();
+    imgUrl.searchParams.set('mode', mode);
+    imgUrl.searchParams.set('rel_path', entry.rel_path);
+    if (mode === 'folder' && data.img_dir) imgUrl.searchParams.set('img_dir', data.img_dir);
+    else if (mode === 'txt' && data.train_file) {
+      imgUrl.searchParams.set('train_file', data.train_file);
+      if (data.label_dir) imgUrl.searchParams.set('label_dir', data.label_dir);
+    }
+    img.src = imgUrl.toString();
 
-    imgEl.onload = () => {
-      if (requestId !== currentRequestId) return;
-      drawBoxes(currentLabels);
+    // Canvas Overlay
+    const canvas = document.createElement('canvas');
+    canvas.className = 'grid-overlay';
+
+    // Metadata Overlay
+    const meta = document.createElement('div');
+    meta.className = 'grid-meta';
+    meta.textContent = `#${index + 1} ${entry.rel_path}`;
+
+    wrapper.appendChild(img);
+    wrapper.appendChild(canvas);
+    wrapper.appendChild(meta);
+
+    // Logic: Load labels after image loads to size canvas correctly
+    img.decoding = 'async'; // Optimize decoding
+    img.onload = () => {
+      canvas.width = img.clientWidth;
+      canvas.height = img.clientHeight;
+      
+      fetchLabels(entry.rel_path)
+        .then(data => {
+          // Attach raw labels to wrapper for exclusion export logic if needed
+          wrapper.dataset.labelPath = data.label; 
+          drawBoxes(canvas, data.labels, img); // Pass img element for ratio calculation
+        })
+        .catch(() => {
+            // No labels or error, just ignore
+        });
     };
 
-    try {
-      const labelInfo = await loadLabels(relPath);
-      if (requestId !== currentRequestId) return;
-      currentLabel = labelInfo.label;
-      currentLabels = labelInfo.labels;
-      renderLabelList(labelInfo.labels, labelInfo.label);
-      if (imgEl.complete) {
-        drawBoxes(currentLabels);
+    // Interaction
+    wrapper.addEventListener('click', () => {
+      if (selectedSet.has(entry.rel_path)) {
+        selectedSet.delete(entry.rel_path);
+        wrapper.classList.remove('selected');
+      } else {
+        selectedSet.add(entry.rel_path);
+        wrapper.classList.add('selected');
       }
-    } catch (err) {
-      renderLabelList([], '');
-      showToast(err.message, 'error');
+      updateCounter();
+    });
+
+    return wrapper;
+  }
+
+  function renderGrid() {
+    if (!gridContainer) return;
+    gridContainer.innerHTML = '';
+    updateCounter();
+
+    const batch = images.slice(currentIndex, currentIndex + BATCH_SIZE);
+    if (batch.length === 0 && total > 0) {
+        // Edge case correction
+        currentIndex = 0;
+        const retryBatch = images.slice(0, BATCH_SIZE);
+        retryBatch.forEach((entry, i) => {
+            const globalIndex = 0 + i;
+            const el = createGridItem(entry, globalIndex);
+            gridContainer.appendChild(el);
+        });
+        // Prefetch next after render
+        setTimeout(prefetchNextBatch, 100);
+        return;
+    }
+
+    batch.forEach((entry, i) => {
+      const globalIndex = currentIndex + i;
+      const el = createGridItem(entry, globalIndex);
+      gridContainer.appendChild(el);
+    });
+    
+    // Trigger prefetch for the NEXT batch immediately
+    setTimeout(prefetchNextBatch, 50);
+  }
+
+  // -- Optimization: Prefetching --
+  function prefetchNextBatch() {
+      const nextIdx = currentIndex + BATCH_SIZE;
+      if (nextIdx >= total) return;
+      
+      const batch = images.slice(nextIdx, nextIdx + BATCH_SIZE);
+      batch.forEach(entry => {
+          const img = new Image();
+          const url = new URL('/image', window.location.origin);
+          url.searchParams.set('mode', mode);
+          url.searchParams.set('rel_path', entry.rel_path);
+          if (mode === 'folder' && data.img_dir) url.searchParams.set('img_dir', data.img_dir);
+          else if (mode === 'txt' && data.train_file) {
+            url.searchParams.set('train_file', data.train_file);
+            if (data.label_dir) url.searchParams.set('label_dir', data.label_dir);
+          }
+          img.src = url.toString();
+      });
+  }
+
+  // -- Actions --
+
+  function nextBatch() {
+    if (currentIndex + BATCH_SIZE >= total) return; // End reached
+    currentIndex += BATCH_SIZE;
+    selectedSet.clear(); // Clear selection on move? Usually better UX to clear.
+    // Don't clear search highlight if user just moves page, but maybe we should?
+    // Let's keep highlight until new search or refresh.
+    renderGrid();
+  }
+
+  function prevBatch() {
+    if (currentIndex - BATCH_SIZE < 0) currentIndex = 0;
+    else currentIndex -= BATCH_SIZE;
+    selectedSet.clear();
+    renderGrid();
+  }
+
+  function goToFirst() {
+      stopAuto();
+      currentIndex = 0;
+      selectedSet.clear();
+      renderGrid();
+  }
+
+  function goToLast() {
+      stopAuto();
+      // Calculate start index of the last batch
+      // e.g. total=10, batch=4 -> indices: 0, 4, 8. Last start is 8.
+      // floor( (total - 1) / batch ) * batch
+      if (total === 0) return;
+      currentIndex = Math.floor((total - 1) / BATCH_SIZE) * BATCH_SIZE;
+      selectedSet.clear();
+      renderGrid();
+  }
+
+  function performSearch() {
+      const query = searchInput.value.trim().toLowerCase();
+      if (!query) {
+          searchHighlightPath = null;
+          renderGrid();
+          return;
+      }
+
+      // Find index of image containing the query string
+      const foundIndex = images.findIndex(img => img.rel_path.toLowerCase().includes(query));
+      
+      if (foundIndex === -1) {
+          showToast(`No image found matching "${query}"`, 'error');
+          return;
+      }
+
+      // Calculate batch index
+      const batchStartIndex = Math.floor(foundIndex / BATCH_SIZE) * BATCH_SIZE;
+      currentIndex = batchStartIndex;
+      
+      // Set highlight path
+      searchHighlightPath = images[foundIndex].rel_path;
+      
+      stopAuto();
+      selectedSet.clear();
+      renderGrid();
+      
+      showToast(`Found "${images[foundIndex].rel_path}"`);
+  }
+
+  function toggleAuto() {
+    autoActive = !autoActive;
+    if (autoActive) {
+      autoBtn.classList.add('active');
+      autoBtn.textContent = 'Stop Auto';
+      autoInterval = setInterval(() => {
+        if (currentIndex + BATCH_SIZE >= total) {
+          stopAuto();
+          return;
+        }
+        nextBatch();
+      }, 400); // Optimized: 0.4 seconds per batch
+    } else {
+      stopAuto();
     }
   }
 
-  function addExcluded() {
-    const rel = images[index];
-    if (excluded.has(rel)) return;
-    const entry = { image: rel, label: currentLabel };
-    excluded.set(rel, entry);
+  function stopAuto() {
+    autoActive = false;
+    autoBtn.classList.remove('active');
+    autoBtn.textContent = 'Auto Play';
+    if (autoInterval) {
+      clearInterval(autoInterval);
+      autoInterval = null;
+    }
+  }
 
-    const li = document.createElement('li');
-    li.textContent = `${entry.image} :: ${entry.label}`;
-    excludedList.appendChild(li);
-    showToast('Added to exclusion list');
+  function excludeSelected() {
+    if (selectedSet.size === 0) return;
+    
+    let count = 0;
+    selectedSet.forEach(relPath => {
+      if (!excludedSet.has(relPath)) {
+        excludedSet.set(relPath, { image: relPath, reason: 'User Selection' });
+        count++;
+      }
+    });
+
+    selectedSet.clear();
+    showToast(`Excluded ${count} images`);
+    updateCounter();
+    
+    // Visually update current grid
+    const items = gridContainer.querySelectorAll('.grid-item');
+    items.forEach(item => {
+        item.classList.remove('selected');
+    });
   }
 
   function exportExcluded() {
-    if (!excluded.size) return;
-    const lines = Array.from(excluded.values()).map((item) => `${item.image}\t${item.label}`);
+    if (!excludedSet.size) {
+      showToast('No images excluded yet', 'error');
+      return;
+    }
+    const lines = Array.from(excludedSet.values()).map((item) => `${item.image}`);
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -282,76 +459,52 @@
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     showToast('Exported exclusion list');
   }
 
-  function toggleAutoMove() {
-    autoActive = !autoActive;
-    if (autoActive) {
-      autoBtn.classList.add('active');
-      autoBtn.textContent = 'Stop Auto';
-      autoInterval = setInterval(() => showImage(index + 1), 800);
-    } else {
-      autoBtn.classList.remove('active');
-      autoBtn.textContent = 'Auto Move';
-      if (autoInterval) {
-        clearInterval(autoInterval);
-        autoInterval = null;
-      }
-    }
-  }
-
-  function stopAutoMove() {
-    if (autoActive) {
-      autoActive = false;
-      autoBtn.classList.remove('active');
-      autoBtn.textContent = 'Auto Move';
-      if (autoInterval) {
-        clearInterval(autoInterval);
-        autoInterval = null;
-      }
-    }
-  }
-
-  if (classFilter) {
-    COCO_CLASSES.forEach((name, idx) => {
-      const option = document.createElement('option');
-      option.value = String(idx);
-      option.textContent = `${idx}: ${name}`;
-      classFilter.appendChild(option);
-    });
-    classFilter.addEventListener('change', () => {
-      drawBoxes(currentLabels);
-    });
-  }
-
-  prevBtn.addEventListener('click', () => {
-    stopAutoMove();
-    showImage(index - 1);
-  });
-  nextBtn.addEventListener('click', () => {
-    stopAutoMove();
-    showImage(index + 1);
-  });
-  excludeBtn.addEventListener('click', addExcluded);
+  // -- Event Listeners --
+  if (firstBtn) firstBtn.addEventListener('click', goToFirst);
+  if (lastBtn) lastBtn.addEventListener('click', goToLast);
+  prevBtn.addEventListener('click', () => { stopAuto(); prevBatch(); });
+  nextBtn.addEventListener('click', () => { stopAuto(); nextBatch(); });
+  autoBtn.addEventListener('click', toggleAuto);
+  excludeBtn.addEventListener('click', excludeSelected);
   exportBtn.addEventListener('click', exportExcluded);
-  autoBtn.addEventListener('click', toggleAutoMove);
+  
+  // Search listener
+  if (searchInput) {
+      searchInput.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+              performSearch();
+          }
+      });
+  }
 
+  // Keyboard Navigation
   document.addEventListener('keydown', (ev) => {
+    // Ignore shortcuts if typing in search box
+    if (document.activeElement === searchInput) return;
+
     if (ev.key === 'ArrowLeft') {
-      ev.preventDefault();
-      stopAutoMove();
-      showImage(index - 1);
+      stopAuto();
+      prevBatch();
     } else if (ev.key === 'ArrowRight') {
-      ev.preventDefault();
-      stopAutoMove();
-      showImage(index + 1);
-    } else if (ev.key === ' ') {
-      ev.preventDefault();
-      addExcluded();
+      stopAuto();
+      nextBatch();
+    } else if (ev.key === 'ArrowUp') {
+        stopAuto();
+        goToFirst();
+    } else if (ev.key === 'ArrowDown') {
+        stopAuto();
+        goToLast();
+    } else if (ev.key === ' ' || ev.key === 'Enter') {
+      if (ev.key === 'Enter') {
+          ev.preventDefault();
+          excludeSelected();
+      }
     }
   });
 
-  showImage(0);
+  // Initial Render
+  renderGrid();
 })();

@@ -6,30 +6,92 @@
     <title>MegaFall Viewer</title>
     <link rel="stylesheet" href="/static/styles.css" />
 </head>
-<body>
+<body class="index-body">
+    {% set current_mode = prefill.mode if prefill and prefill.mode else 'folder' %}
     <div id="toast" class="toast hidden"></div>
     <div id="loading-overlay" class="loading hidden">
         <div class="loading-card">
-            <p>Preparing viewer… <span id="loading-percent">1%</span></p>
+            <div class="loading-spinner"></div>
+            <p>CV Data Scanning… <span id="loading-percent">0%</span></p>
             <div class="loading-bar">
-                <div class="loading-progress" id="loading-progress" style="width:1%"></div>
+                <div class="loading-progress" id="loading-progress" style="width:0%"></div>
             </div>
         </div>
     </div>
-    <main class="container">
-        <h1>Vision Dataset Viewer</h1>
-        <form action="/viewer" method="get" class="path-form" id="path-form">
-            <label>
-                Image directory
-                <input type="text" name="img_dir" required placeholder="/path/to/images" value="{{ prefill.img_dir if prefill else '' }}" />
-            </label>
-            <label>
-                Label directory
-                <input type="text" name="label_dir" required placeholder="/path/to/labels" value="{{ prefill.label_dir if prefill else '' }}" />
-            </label>
-            <button type="submit">Launch Viewer</button>
+    <main class="landing">
+        <section class="hero">
+            <div class="hero-copy">
+                <h1>CV Data Viewer</h1>
+                <p>정확한 품질 검수를 위해 두 가지 입력 방식을 지원합니다. 팀의 워크플로우에 맞춰 폴더 혹은 train.txt 파일을 선택하고, 즉시 뷰어를 실행하세요.</p>
+                <ul class="hero-points">
+                    <li>
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                        폴더 모드: 이미지와 라벨 폴더를 그대로 탐색
+                    </li>
+                    <li>
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        Train.txt 모드: 학습 리스트 파일로 빠른 검토
+                    </li>
+                    <li>
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                        4x Grid 뷰: 4배 더 빠른 멀티태스킹 검수
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <form action="/viewer" method="get" class="dataset-form glass-card" id="path-form">
+            <header class="form-header">
+                <h2>데이터셋 입력 구성</h2>
+                <p>검토할 데이터셋 소스와 위치를 입력해 주세요.</p>
+            </header>
+            <fieldset class="mode-toggle">
+                <legend>Dataset source</legend>
+                <div class="mode-options">
+                    <input type="radio" name="mode" id="mode-folder" value="folder" {% if current_mode == 'folder' %}checked{% endif %} />
+                    <label for="mode-folder" class="mode-option">
+                        <span class="mode-title">폴더</span>
+                        <span class="mode-desc">로컬 이미지/라벨 폴더를 직접 지정</span>
+                    </label>
+                    <input type="radio" name="mode" id="mode-txt" value="txt" {% if current_mode == 'txt' %}checked{% endif %} />
+                    <label for="mode-txt" class="mode-option">
+                        <span class="mode-title">train.txt</span>
+                        <span class="mode-desc">학습 리스트 파일을 사용해 경로 불러오기</span>
+                    </label>
+                </div>
+            </fieldset>
+
+            <div class="input-grid">
+                <div class="mode-field" data-mode="folder">
+                    <label for="img-dir-input" class="input-label">
+                        <span class="label-title">이미지 디렉터리</span>
+                        <span class="label-hint">예: /datasets/images</span>
+                    </label>
+                    <input id="img-dir-input" type="text" name="img_dir" placeholder="/path/to/images" value="{{ prefill.img_dir if prefill else '' }}" />
+                </div>
+
+                <div class="mode-field" data-mode="txt">
+                    <label for="train-file-input" class="input-label">
+                        <span class="label-title">train.txt 파일</span>
+                        <span class="label-hint">학습 이미지 경로 리스트</span>
+                    </label>
+                    <input id="train-file-input" type="text" name="train_file" placeholder="/path/to/train.txt" value="{{ prefill.train_file if prefill else '' }}" />
+                </div>
+
+                <div class="mode-field" data-mode="shared">
+                    <label for="label-dir-input" class="input-label">
+                        <span class="label-title">라벨 디렉터리</span>
+                        <span class="label-hint">YOLO 포맷, 이미지와 동일 구조</span>
+                    </label>
+                    <input id="label-dir-input" type="text" name="label_dir" placeholder="/path/to/labels" value="{{ prefill.label_dir if prefill else '' }}" required />
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button type="submit" class="primary-btn">Launch Viewer</button>
+                <p class="footnote">절대 경로 입력을 추천합니다. 폴더 모드에서는 이미지와 라벨 폴더 구조가 동일해야 하며, train.txt 모드에서는 라벨 디렉터리에서 상대 경로를 매칭합니다.</p>
+            </div>
         </form>
-        <p class="hint">Provide absolute paths. Images and labels should share matching relative paths and filenames (YOLO format).</p>
     </main>
     <script>
         const errorMessage = {{ (error or '') | tojson }};
@@ -44,6 +106,12 @@
         const overlay = document.getElementById('loading-overlay');
         const progressBar = document.getElementById('loading-progress');
         const percentText = document.getElementById('loading-percent');
+        const modeRadios = Array.from(form.querySelectorAll('input[name="mode"]'));
+        const folderField = form.querySelector('.mode-field[data-mode="folder"]');
+        const txtField = form.querySelector('.mode-field[data-mode="txt"]');
+        const imgDirInput = form.querySelector('input[name="img_dir"]');
+        const trainFileInput = form.querySelector('input[name="train_file"]');
+        const labelDirInput = form.querySelector('input[name="label_dir"]');
         let eventSource;
 
         function showToast(message, type = 'info') {
@@ -63,17 +131,67 @@
             percentText.textContent = '0%';
         }
 
+        function selectedMode() {
+            const picked = modeRadios.find((radio) => radio.checked);
+            return picked ? picked.value : 'folder';
+        }
+
+        function applyMode(mode) {
+            if (mode === 'txt') {
+                folderField.classList.add('hidden');
+                txtField.classList.remove('hidden');
+                imgDirInput.disabled = true;
+                imgDirInput.required = false;
+                trainFileInput.disabled = false;
+                trainFileInput.required = true;
+            } else {
+                folderField.classList.remove('hidden');
+                txtField.classList.add('hidden');
+                imgDirInput.disabled = false;
+                imgDirInput.required = true;
+                trainFileInput.disabled = true;
+                trainFileInput.required = false;
+            }
+        }
+
+        const initialMode = {{ current_mode | tojson }};
+        applyMode(initialMode);
+        modeRadios.forEach((radio) => {
+            radio.addEventListener('change', () => {
+                applyMode(selectedMode());
+            });
+        });
+
         form.addEventListener('submit', (ev) => {
             ev.preventDefault();
             resetProgress();
-            const imgDir = form.img_dir.value.trim();
-            const labelDir = form.label_dir.value.trim();
-            if (!imgDir || !labelDir) {
+            const mode = selectedMode();
+            const imgDir = imgDirInput.value.trim();
+            const trainFile = trainFileInput.value.trim();
+            const labelDir = labelDirInput.value.trim();
+
+            if (!labelDir) {
+                showToast('Label directory is required', 'error');
+                return;
+            }
+            if (mode === 'folder' && !imgDir) {
+                showToast('Image directory is required for folder mode', 'error');
+                return;
+            }
+            if (mode === 'txt' && !trainFile) {
+                showToast('Train file path is required for txt mode', 'error');
                 return;
             }
             overlay.classList.remove('hidden');
 
-            const params = new URLSearchParams({ img_dir: imgDir, label_dir: labelDir });
+            const params = new URLSearchParams();
+            params.set('mode', mode);
+            params.set('label_dir', labelDir);
+            if (mode === 'folder') {
+                params.set('img_dir', imgDir);
+            } else {
+                params.set('train_file', trainFile);
+            }
             eventSource = new EventSource(`/api/progress?${params.toString()}`);
 
             eventSource.onmessage = (event) => {

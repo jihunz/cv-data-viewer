@@ -3,51 +3,78 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MegaFall Viewer</title>
+    <title>CV Data Viewer</title>
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="toast" class="toast hidden"></div>
-    <main class="viewer-container">
-        <header class="viewer-header">
-            <h1>Vision Dataset Viewer</h1>
-            <div class="meta">
-                <span id="counter"></span>
-                <span id="paths"></span>
-            </div>
-        </header>
-        <section class="canvas-wrapper">
-            <img id="display-image" alt="dataset frame" />
-            <canvas id="overlay"></canvas>
-        </section>
-        <section class="controls">
-            <div class="nav-buttons">
-                <button id="prev-btn" type="button">⟨ Prev</button>
-                <button id="next-btn" type="button">Next ⟩</button>
-                <button id="auto-btn" type="button">Auto Move</button>
-            </div>
-            <div class="action-buttons">
-                <button id="exclude-btn" type="button">Exclude</button>
-                <button id="export-btn" type="button">Export</button>
-            </div>
-            <div class="filter-control">
-                <label for="class-filter">Visible classes</label>
-                <select id="class-filter" multiple size="6"></select>
-                <small>Hold Ctrl/⌘ to select multiple. Leave empty for all classes.</small>
-            </div>
-        </section>
-        <section class="info">
-            <h2>Label details</h2>
-            <ul id="label-list"></ul>
-        </section>
-        <section class="excluded">
-            <h2>Excluded items</h2>
-            <ul id="excluded-list"></ul>
-        </section>
+    <!-- Header -->
+    <header class="viewer-header">
+        <a href="/" class="brand" style="text-decoration: none;">
+            CV Data <span>Viewer</span>
+        </a>
+        <div class="header-controls">
+            <div class="info-chip" id="paths">Loading paths...</div>
+            <div class="info-chip" id="counter">0 / 0</div>
+        </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="viewer-grid" id="grid-container">
+        <!-- Grid items will be injected by JS -->
     </main>
+
+    <!-- Footer Controls -->
+    <footer class="viewer-footer">
+        <div class="control-group">
+            <button id="first-btn" class="btn" title="Go to First">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+            </button>
+            <button id="prev-btn" class="btn">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+                Prev
+            </button>
+            <button id="next-btn" class="btn">
+                Next
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+            <button id="last-btn" class="btn" title="Go to Last">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+            </button>
+        </div>
+
+        <div class="control-group">
+            <input type="text" id="search-input" class="search-input" placeholder="Search filename..." />
+            <button id="auto-btn" class="btn">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                Auto
+            </button>
+            <select id="class-filter" class="btn" style="padding-right: 2rem;">
+                <option value="">All Classes</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <button id="exclude-btn" class="btn danger">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                Exclude Selected (<span id="selected-count">0</span>)
+            </button>
+            <button id="export-btn" class="btn">
+                Export List
+            </button>
+        </div>
+    </footer>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Data Injection -->
     <script>
+        // data_json is already a JSON string from server. 
+        // Inserting it directly creates a valid JS object literal.
         window.viewerData = {{ data_json | safe }};
     </script>
-    <script src="/static/viewer.js" defer></script>
+    <script src="/static/viewer.js"></script>
 </body>
 </html>
