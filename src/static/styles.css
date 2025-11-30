@@ -452,4 +452,34 @@ input[type="text"]:focus {
   z-index: 100;
   backdrop-filter: blur(4px);
   border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.toast-content {
+  flex: 1;
+}
+
+.toast-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.toast-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.2s;
+}
+
+.toast-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

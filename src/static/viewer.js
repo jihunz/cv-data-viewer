@@ -28,6 +28,11 @@
   let autoInterval = null;
   let autoActive = false;
   let searchHighlightPath = null; // Path of the image to highlight (Green)
+  
+  // Search State
+  let lastQuery = "";
+  let searchResults = [];
+  let currentSearchIdx = -1;
 
   // DOM Elements
   const gridContainer = document.getElementById('grid-container');
@@ -88,14 +93,58 @@
 
   function showToast(message, type = 'info') {
     if (!toast) return;
-    toast.textContent = message;
+    
+    // If message is an object with actions, render them
+    if (typeof message === 'object' && message.text) {
+        const content = document.createElement('div');
+        content.className = 'toast-content';
+        content.textContent = message.text;
+        
+        const actions = document.createElement('div');
+        actions.className = 'toast-actions';
+        
+        if (message.onPrev) {
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'toast-btn';
+            prevBtn.textContent = '← Prev';
+            prevBtn.onclick = () => { 
+                message.onPrev(); 
+                // Don't close toast immediately to allow rapid navigation
+                resetToastTimeout();
+            };
+            actions.appendChild(prevBtn);
+        }
+        
+        if (message.onNext) {
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'toast-btn';
+            nextBtn.textContent = 'Next →';
+            nextBtn.onclick = () => { 
+                message.onNext(); 
+                resetToastTimeout();
+            };
+            actions.appendChild(nextBtn);
+        }
+        
+        toast.innerHTML = '';
+        toast.appendChild(content);
+        toast.appendChild(actions);
+    } else {
+        // Simple text message
+        toast.textContent = message;
+    }
+
     toast.classList.remove('hidden');
     toast.style.background = type === 'error' ? 'rgba(220, 38, 38, 0.95)' : 'rgba(15, 118, 110, 0.95)';
     
+    resetToastTimeout();
+  }
+
+  function resetToastTimeout() {
     if (toastTimeout) clearTimeout(toastTimeout);
     toastTimeout = setTimeout(() => {
       toast.classList.add('hidden');
-    }, 3000);
+    }, 4000);
   }
 
   function updateCounter() {
@@ -367,34 +416,63 @@
       renderGrid();
   }
 
-  function performSearch() {
-      const query = searchInput.value.trim().toLowerCase();
-      if (!query) {
-          searchHighlightPath = null;
-          renderGrid();
-          return;
-      }
+  function navigateSearch(direction) {
+      if (searchResults.length === 0) return;
 
-      // Find index of image containing the query string
-      const foundIndex = images.findIndex(img => img.rel_path.toLowerCase().includes(query));
+      if (direction === 'next') {
+          currentSearchIdx = (currentSearchIdx + 1) % searchResults.length;
+      } else {
+          currentSearchIdx = (currentSearchIdx - 1 + searchResults.length) % searchResults.length;
+      }
       
-      if (foundIndex === -1) {
-          showToast(`No image found matching "${query}"`, 'error');
-          return;
-      }
-
-      // Calculate batch index
-      const batchStartIndex = Math.floor(foundIndex / BATCH_SIZE) * BATCH_SIZE;
+      const result = searchResults[currentSearchIdx];
+      const batchStartIndex = Math.floor(result.idx / BATCH_SIZE) * BATCH_SIZE;
       currentIndex = batchStartIndex;
-      
-      // Set highlight path
-      searchHighlightPath = images[foundIndex].rel_path;
+      searchHighlightPath = result.path;
       
       stopAuto();
       selectedSet.clear();
       renderGrid();
       
-      showToast(`Found "${images[foundIndex].rel_path}"`);
+      showSearchToast(currentSearchIdx, searchResults.length, result.path);
+  }
+
+  function showSearchToast(idx, total, path) {
+      showToast({
+          text: `Found ${idx + 1}/${total}: "${path}"`,
+          onPrev: () => navigateSearch('prev'),
+          onNext: () => navigateSearch('next')
+      });
+  }
+
+  function performSearch() {
+      const query = searchInput.value.trim().toLowerCase();
+      if (!query) {
+          searchHighlightPath = null;
+          searchResults = [];
+          currentSearchIdx = -1;
+          lastQuery = "";
+          renderGrid();
+          return;
+      }
+
+      // New search or changed query
+      if (query !== lastQuery) {
+          searchResults = images
+            .map((img, idx) => ({ idx, path: img.rel_path }))
+            .filter(item => item.path.toLowerCase().includes(query));
+          
+          lastQuery = query;
+          currentSearchIdx = -1;
+          
+          if (searchResults.length === 0) {
+              showToast(`No images found matching "${query}"`, 'error');
+              return;
+          }
+      }
+
+      // Initial move (next)
+      navigateSearch('next');
   }
 
   function toggleAuto() {
