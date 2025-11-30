@@ -36,7 +36,8 @@
 
   // DOM Elements
   const gridContainer = document.getElementById('grid-container');
-  const counterEl = document.getElementById('counter');
+  // Replace counterEl with input reference
+  const counterInput = document.getElementById('counter-input');
   const pathsEl = document.getElementById('paths');
   const firstBtn = document.getElementById('first-btn');
   const prevBtn = document.getElementById('prev-btn');
@@ -149,11 +150,36 @@
 
   function updateCounter() {
     const end = Math.min(currentIndex + BATCH_SIZE, total);
-    counterEl.textContent = `${currentIndex + 1} - ${end} / ${total}`;
-    selectedCountEl.textContent = selectedSet.size;
+    if (counterInput) {
+        counterInput.value = `${currentIndex + 1} - ${end} / ${total}`;
+    }
+    if (selectedCountEl) {
+        selectedCountEl.textContent = selectedSet.size;
+    }
     
-    excludeBtn.style.opacity = selectedSet.size > 0 ? '1' : '0.5';
-    excludeBtn.style.cursor = selectedSet.size > 0 ? 'pointer' : 'not-allowed';
+    if (excludeBtn) {
+        excludeBtn.style.opacity = selectedSet.size > 0 ? '1' : '0.5';
+        excludeBtn.style.cursor = selectedSet.size > 0 ? 'pointer' : 'not-allowed';
+    }
+  }
+
+  function jumpToIndex(val) {
+      let targetIdx = parseInt(val, 10);
+      if (isNaN(targetIdx)) return;
+      
+      // Convert 1-based index to 0-based
+      targetIdx = targetIdx - 1;
+      
+      if (targetIdx < 0) targetIdx = 0;
+      if (targetIdx >= total) targetIdx = total - 1;
+      
+      // Calculate batch start
+      const batchStart = Math.floor(targetIdx / BATCH_SIZE) * BATCH_SIZE;
+      
+      stopAuto();
+      currentIndex = batchStart;
+      selectedSet.clear();
+      renderGrid();
   }
 
   function getSelectedClasses() {
@@ -558,10 +584,24 @@
       });
   }
 
+  // Jump to Index listener
+  if (counterInput) {
+      counterInput.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+              jumpToIndex(counterInput.value);
+              counterInput.blur(); // Remove focus
+          }
+      });
+      counterInput.addEventListener('focus', () => {
+          // Select all text on focus for easy replacement
+          counterInput.select();
+      });
+  }
+
   // Keyboard Navigation
   document.addEventListener('keydown', (ev) => {
-    // Ignore shortcuts if typing in search box
-    if (document.activeElement === searchInput) return;
+    // Ignore shortcuts if typing in search box or counter input
+    if (document.activeElement === searchInput || document.activeElement === counterInput) return;
 
     if (ev.key === 'ArrowLeft') {
       stopAuto();

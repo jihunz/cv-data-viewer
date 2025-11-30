@@ -235,13 +235,30 @@ input[type="text"]:focus {
   align-items: center;
 }
 
-.info-chip {
-  background: var(--bg-primary);
-  padding: 0.25rem 0.75rem;
-  border-radius: 99px;
-  font-size: 0.8rem;
+.counter-wrapper {
+  padding: 0; /* Remove padding from wrapper to let input fill it */
+  overflow: hidden;
+  min-width: 120px;
+  display: flex;
+  justify-content: center;
+}
+
+.counter-input {
+  background: transparent;
+  border: none;
   color: var(--text-secondary);
-  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  text-align: center;
+  width: 100%;
+  padding: 0.25rem 0.75rem;
+  font-family: inherit;
+  outline: none;
+  cursor: text;
+}
+
+.counter-input:focus {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Grid Layout */
