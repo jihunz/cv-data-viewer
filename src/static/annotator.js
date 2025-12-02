@@ -31,6 +31,18 @@ window.openExportModal = () => {
     const resizeW = document.getElementById('resize-w');
     const resizeH = document.getElementById('resize-h');
 
+    // AI Mode Elements
+    const aiModeToggle = document.getElementById('ai-mode-toggle');
+    const aiOptions = document.getElementById('ai-options');
+    const aiStatus = document.getElementById('ai-status');
+    const aiModelSelect = document.getElementById('ai-model');
+    const aiConfidenceSlider = document.getElementById('ai-confidence');
+    const confidenceValue = document.getElementById('confidence-value');
+    const classFilterInput = document.getElementById('class-filter');
+    const classFilterSection = document.getElementById('class-filter-section');
+    const detectCurrentBtn = document.getElementById('detect-current-btn');
+    const detectionModeRadios = document.querySelectorAll('input[name="detection-mode"]');
+
     // --- State ---
     const data = window.annotateData || { images: [] };
     const images = data.images || [];
@@ -60,6 +72,10 @@ window.openExportModal = () => {
     let offsetX = 0;
     let offsetY = 0;
 
+    // AI Mode State
+    let aiModeEnabled = false;
+    let isDetecting = false;
+
     // --- Initialization ---
     function init() {
         if (total > 0) loadIndex(0);
@@ -75,6 +91,165 @@ window.openExportModal = () => {
         
         if (confirmExportBtn) {
             confirmExportBtn.onclick = handleExport;
+        }
+        
+        // Initialize AI Mode
+        initAIMode();
+    }
+
+    // --- AI Mode ---
+    function initAIMode() {
+        console.log('[AI] initAIMode called');
+        console.log('[AI] aiModeToggle:', aiModeToggle);
+        console.log('[AI] aiOptions:', aiOptions);
+        console.log('[AI] detectCurrentBtn:', detectCurrentBtn);
+        
+        // Toggle AI Mode
+        if (aiModeToggle) {
+            aiModeToggle.onchange = () => {
+                console.log('[AI] Toggle changed:', aiModeToggle.checked);
+                aiModeEnabled = aiModeToggle.checked;
+                if (aiOptions) {
+                    aiOptions.classList.toggle('hidden', !aiModeEnabled);
+                    console.log('[AI] aiOptions hidden:', aiOptions.classList.contains('hidden'));
+                }
+                updateAIStatus(aiModeEnabled ? 'active' : '');
+                
+                // Auto-detect when enabling AI mode
+                if (aiModeEnabled && total > 0) {
+                    runDetection();
+                }
+            };
+        } else {
+            console.warn('[AI] aiModeToggle not found!');
+        }
+        
+        // Confidence slider
+        if (aiConfidenceSlider && confidenceValue) {
+            aiConfidenceSlider.oninput = () => {
+                confidenceValue.textContent = aiConfidenceSlider.value;
+            };
+        }
+        
+        // Detection mode toggle (all vs specific classes)
+        detectionModeRadios.forEach(radio => {
+            radio.onchange = () => {
+                const isSpecific = radio.value === 'specific' && radio.checked;
+                if (classFilterSection) {
+                    classFilterSection.classList.toggle('hidden', !isSpecific);
+                }
+            };
+        });
+        
+        // Detect current image button
+        if (detectCurrentBtn) {
+            detectCurrentBtn.onclick = () => {
+                console.log('[AI] Detect button clicked');
+                runDetection();
+            };
+        } else {
+            console.warn('[AI] detectCurrentBtn not found!');
+        }
+    }
+    
+    function updateAIStatus(status) {
+        if (!aiStatus) return;
+        aiStatus.className = 'ai-status';
+        if (status === 'active') {
+            aiStatus.textContent = 'ON';
+            aiStatus.classList.add('active');
+        } else if (status === 'loading') {
+            aiStatus.textContent = 'Detecting...';
+            aiStatus.classList.add('loading');
+        } else {
+            aiStatus.textContent = '';
+        }
+    }
+    
+    function getDetectionParams() {
+        const model = aiModelSelect ? aiModelSelect.value : 'yolo12x';
+        const conf = aiConfidenceSlider ? parseFloat(aiConfidenceSlider.value) : 0.25;
+        
+        // Check detection mode
+        let classes = null;
+        const specificMode = document.querySelector('input[name="detection-mode"][value="specific"]');
+        if (specificMode && specificMode.checked && classFilterInput) {
+            const filterText = classFilterInput.value.trim();
+            if (filterText) {
+                classes = filterText.split(',')
+                    .map(s => parseInt(s.trim(), 10))
+                    .filter(n => !isNaN(n));
+            }
+        }
+        
+        return { model, conf, classes };
+    }
+    
+    async function runDetection() {
+        if (isDetecting || total === 0) return;
+        
+        const relPath = images[currentIndex];
+        if (!relPath) return;
+        
+        isDetecting = true;
+        updateAIStatus('loading');
+        
+        if (detectCurrentBtn) {
+            detectCurrentBtn.disabled = true;
+            detectCurrentBtn.innerHTML = '<span>⏳</span> Detecting...';
+        }
+        
+        const params = getDetectionParams();
+        
+        try {
+            const res = await fetch('/api/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    img_dir: data.img_dir,
+                    rel_path: relPath,
+                    model: params.model,
+                    classes: params.classes,
+                    conf: params.conf
+                })
+            });
+            
+            if (res.ok) {
+                const result = await res.json();
+                if (result.detections && result.detections.length > 0) {
+                    pushHistory();
+                    
+                    // Add detected boxes (format: [class_id, x, y, w, h, conf])
+                    // We store as [class_id, x, y, w, h] (no confidence)
+                    for (const det of result.detections) {
+                        const newBox = [det[0], det[1], det[2], det[3], det[4]];
+                        boxes.push(newBox);
+                    }
+                    
+                    saveCurrent();
+                    updateBoxList();
+                    redraw();
+                    
+                    console.log(`[AI] Detected ${result.detections.length} objects`);
+                } else {
+                    console.log('[AI] No objects detected');
+                }
+            } else {
+                const errText = await res.text();
+                console.error('[AI] Detection failed:', errText);
+                alert('Detection failed: ' + errText);
+            }
+        } catch (e) {
+            console.error('[AI] Error:', e);
+            alert('Detection error: ' + e.message);
+        } finally {
+            isDetecting = false;
+            updateAIStatus(aiModeEnabled ? 'active' : '');
+            
+            if (detectCurrentBtn) {
+                detectCurrentBtn.disabled = false;
+                detectCurrentBtn.innerHTML = '<span>🔍</span> Detect Current Image';
+            }
         }
     }
 
@@ -133,6 +308,11 @@ window.openExportModal = () => {
             activeBoxIdx = -1;
             updateBoxList();
             redraw();
+            
+            // Auto-detect if AI mode is enabled and no existing boxes
+            if (aiModeEnabled && boxes.length === 0) {
+                runDetection();
+            }
         };
     }
 

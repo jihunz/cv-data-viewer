@@ -6,7 +6,7 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from urllib.parse import quote
 
 import uvicorn
@@ -16,14 +16,44 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
 
+# YOLO Model (Lazy Loading)
+_YOLO_MODEL: Any = None
+_YOLO_MODEL_PATH: Optional[Path] = None
+
 # --- Configuration ---
 APP_ROOT = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(APP_ROOT / "templates"))
 STATIC_DIR = APP_ROOT / "static"
+MODEL_DIR = APP_ROOT / "model"
 
 # Check Env
 if not (APP_ROOT / "templates").exists():
     print(f"[WARNING] Templates directory not found at {APP_ROOT / 'templates'}")
+
+# --- YOLO Model Helper ---
+def get_yolo_model(model_name: str = "yolo12x"):
+    """Lazy load YOLO model"""
+    global _YOLO_MODEL, _YOLO_MODEL_PATH
+    
+    model_path = MODEL_DIR / f"{model_name}.pt"
+    
+    # Return cached model if same path
+    if _YOLO_MODEL is not None and _YOLO_MODEL_PATH == model_path:
+        return _YOLO_MODEL
+    
+    if not model_path.exists():
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_path}")
+    
+    try:
+        from ultralytics import YOLO
+        print(f"[INFO] Loading YOLO model from {model_path}...")
+        _YOLO_MODEL = YOLO(str(model_path))
+        _YOLO_MODEL_PATH = model_path
+        print(f"[INFO] YOLO model loaded successfully")
+        return _YOLO_MODEL
+    except Exception as e:
+        print(f"[ERROR] Failed to load YOLO model: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
 
 # --- Data Roots (Modified for user env) ---
 HOST_DATA_ROOT = Path("/Users/jihunjang/Downloads")
@@ -456,6 +486,93 @@ def get_labels(
         "label": str(label_path) if label_path else "",
         "labels": labels
     })
+
+@app.post("/api/detect")
+def detect_objects(request: Request, payload: dict):
+    """
+    Run YOLO inference on an image and return detected bboxes.
+    
+    Payload:
+    {
+        "img_dir": str,           # Base image directory
+        "rel_path": str,          # Relative path to image
+        "model": str,             # Model name (default: yolo12x)
+        "classes": list[int],     # Optional: filter specific class IDs (COCO indices)
+        "conf": float             # Optional: confidence threshold (default: 0.25)
+    }
+    
+    Returns:
+    {
+        "detections": [[class_id, x_center, y_center, width, height, confidence], ...]
+    }
+    """
+    img_dir = resolve_dataset_path(payload.get("img_dir", ""))
+    rel_path = payload.get("rel_path", "")
+    model_name = payload.get("model", "yolo12x")
+    filter_classes = payload.get("classes", None)  # None = all classes
+    conf_threshold = payload.get("conf", 0.25)
+    
+    # Resolve image path
+    img_path = img_dir / rel_path
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail=f"Image not found: {img_path}")
+    
+    # Load model
+    model = get_yolo_model(model_name)
+    
+    try:
+        # Run inference
+        results = model(str(img_path), conf=conf_threshold, verbose=False)
+        
+        detections = []
+        for result in results:
+            boxes = result.boxes
+            if boxes is None:
+                continue
+                
+            for i in range(len(boxes)):
+                cls_id = int(boxes.cls[i].item())
+                
+                # Filter by class if specified
+                if filter_classes is not None and cls_id not in filter_classes:
+                    continue
+                
+                # Get bbox in xywhn format (normalized center x, y, width, height)
+                xywhn = boxes.xywhn[i].tolist()
+                conf = float(boxes.conf[i].item())
+                
+                # Format: [class_id, x_center, y_center, width, height, confidence]
+                detections.append([
+                    cls_id,
+                    round(xywhn[0], 6),
+                    round(xywhn[1], 6),
+                    round(xywhn[2], 6),
+                    round(xywhn[3], 6),
+                    round(conf, 4)
+                ])
+        
+        return JSONResponse({
+            "status": "success",
+            "image": rel_path,
+            "detections": detections,
+            "count": len(detections)
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Detection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Detection failed: {e}")
+
+
+@app.get("/api/models")
+def list_models():
+    """List available YOLO models in the model directory"""
+    models = []
+    if MODEL_DIR.exists():
+        for p in MODEL_DIR.iterdir():
+            if p.suffix == ".pt":
+                models.append(p.stem)
+    return JSONResponse({"models": sorted(models)})
+
 
 @app.get("/api/progress")
 def scan_progress(

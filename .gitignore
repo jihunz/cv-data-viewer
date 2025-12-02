@@ -367,3 +367,9 @@ pyrightconfig.json
 /datasets/
 /content/
 /.venv/
+
+# Model files (too large for GitHub)
+*.pt
+*.pth
+*.onnx
+src/model/

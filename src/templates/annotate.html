@@ -126,6 +126,59 @@
 
         <!-- Sidebar -->
         <aside class="ann-sidebar">
+            <!-- AI Mode Section -->
+            <div class="tool-group ai-mode-section">
+                <label class="tool-label">🤖 AI Auto-Detect</label>
+                <label class="ai-toggle-row">
+                    <input type="checkbox" id="ai-mode-toggle" />
+                    <span class="ai-toggle-label">Enable AI Mode</span>
+                    <span class="ai-status" id="ai-status"></span>
+                </label>
+                
+                <div id="ai-options" class="ai-options hidden">
+                    <div class="ai-option-group">
+                        <label class="tool-label-sm">Model</label>
+                        <select id="ai-model" class="class-input">
+                            <option value="yolo12x" selected>YOLO12X</option>
+                        </select>
+                    </div>
+                    
+                    <div class="ai-option-group">
+                        <label class="tool-label-sm">Detection Mode</label>
+                        <div class="detection-mode-options">
+                            <label class="detection-option">
+                                <input type="radio" name="detection-mode" value="all" checked />
+                                <span>All Classes</span>
+                            </label>
+                            <label class="detection-option">
+                                <input type="radio" name="detection-mode" value="specific" />
+                                <span>Specific Classes</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div id="class-filter-section" class="ai-option-group hidden">
+                        <label class="tool-label-sm">COCO Class IDs</label>
+                        <input type="text" id="class-filter" class="class-input" placeholder="e.g., 0,1,2 (person,bicycle,car)" />
+                        <small class="ai-hint">Comma-separated COCO indices</small>
+                    </div>
+                    
+                    <div class="ai-option-group">
+                        <label class="tool-label-sm">Confidence</label>
+                        <div class="confidence-slider">
+                            <input type="range" id="ai-confidence" min="0.1" max="0.9" step="0.05" value="0.25" />
+                            <span id="confidence-value">0.25</span>
+                        </div>
+                    </div>
+                    
+                    <button class="btn ai-detect-btn" id="detect-current-btn">
+                        <span>🔍</span> Detect Current Image
+                    </button>
+                </div>
+            </div>
+            
+            <hr class="sidebar-divider" />
+            
             <div class="tool-group">
                 <label class="tool-label">Active Class ID</label>
                 <input type="number" id="class-id" class="class-input" value="0" min="0" />
@@ -265,6 +318,157 @@
         .custom-resolution-inputs input:focus {
             outline: none;
             border-color: var(--accent);
+        }
+        
+        /* AI Mode Styles */
+        .ai-mode-section {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            padding: 1rem;
+            border-radius: 10px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .ai-toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        .ai-toggle-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #10b981;
+        }
+        
+        .ai-toggle-label {
+            flex: 1;
+            font-size: 0.9rem;
+        }
+        
+        .ai-status {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: var(--bg-hover);
+        }
+        
+        .ai-status.active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        
+        .ai-status.loading {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            animation: pulse 1s infinite;
+        }
+        
+        .ai-options {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .ai-options.hidden {
+            display: none !important;
+        }
+        
+        .ai-option-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .tool-label-sm {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        
+        .detection-mode-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .detection-option {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.6rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+        }
+        
+        .detection-option:hover {
+            border-color: var(--accent);
+        }
+        
+        .detection-option input[type="radio"] {
+            accent-color: var(--accent);
+        }
+        
+        .detection-option input[type="radio"]:checked + span {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        
+        .ai-hint {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+        
+        .confidence-slider {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .confidence-slider input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent);
+        }
+        
+        .confidence-slider span {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent);
+            min-width: 35px;
+        }
+        
+        .ai-detect-btn {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border: none;
+            color: white;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .ai-detect-btn:hover {
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+        }
+        
+        .ai-detect-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .sidebar-divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 0.5rem 0;
         }
     </style>
 
