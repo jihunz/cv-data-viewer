@@ -51,6 +51,28 @@
             overflow: hidden;
             cursor: crosshair;
         }
+        
+        /* AI Mode - Canvas Locked */
+        .ann-canvas-area.ai-locked {
+            cursor: not-allowed;
+        }
+        
+        .ann-canvas-area.ai-locked::after {
+            content: '🤖 AI Auto-Detect Running...';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(16, 185, 129, 0.9);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+        }
 
         .ann-footer {
             grid-column: 1 / -1;
@@ -172,7 +194,7 @@
                     </div>
                     
                     <button class="btn ai-detect-btn" id="detect-current-btn">
-                        <span>🔍</span> Detect Current Image
+                        <span>🚀</span> Start Batch Detection
                     </button>
                 </div>
             </div>
@@ -326,6 +348,28 @@
             padding: 1rem;
             border-radius: 10px;
             border: 1px solid rgba(59, 130, 246, 0.3);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: default !important;
+        }
+        
+        .ai-mode-section,
+        .ai-mode-section * {
+            cursor: default;
+        }
+        
+        .ai-mode-section input,
+        .ai-mode-section select,
+        .ai-mode-section button,
+        .ai-mode-section label {
+            cursor: pointer !important;
+        }
+        
+        /* AI Working Animation - Subtle glow only */
+        .ai-mode-section.ai-working {
+            border-color: rgba(16, 185, 129, 0.6);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
         }
         
         .ai-toggle-row {
@@ -375,6 +419,28 @@
         }
         
         .ai-options.hidden {
+            display: none !important;
+        }
+        
+        /* Batch Result Modal - no blur, minimal overlay */
+        .batch-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+        
+        .batch-modal.hidden {
             display: none !important;
         }
         

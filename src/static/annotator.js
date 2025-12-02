@@ -75,6 +75,10 @@ window.openExportModal = () => {
     // AI Mode State
     let aiModeEnabled = false;
     let isDetecting = false;
+    let isBatchDetecting = false;
+    let batchStartTime = 0;
+    let batchDetectedCount = 0;
+    let batchTotalBoxes = 0;
 
     // --- Initialization ---
     function init() {
@@ -113,11 +117,32 @@ window.openExportModal = () => {
                     aiOptions.classList.toggle('hidden', !aiModeEnabled);
                     console.log('[AI] aiOptions hidden:', aiOptions.classList.contains('hidden'));
                 }
-                updateAIStatus(aiModeEnabled ? 'active' : '');
                 
-                // Auto-detect when enabling AI mode
-                if (aiModeEnabled && total > 0) {
-                    runDetection();
+                const aiSection = document.querySelector('.ai-mode-section');
+                
+                if (aiModeEnabled) {
+                    updateAIStatus('active');
+                    // Just show options, don't start batch yet
+                    // User will click "Detect Current Image" to start
+                } else {
+                    // Disable AI mode - cleanup
+                    updateAIStatus('');
+                    if (aiSection) aiSection.classList.remove('ai-working');
+                    setCanvasInteraction(true);
+                    
+                    // Stop batch if running
+                    if (isBatchDetecting) {
+                        isBatchDetecting = false;
+                        isDetecting = false;
+                    }
+                    
+                    // Re-enable controls
+                    if (prevBtn) prevBtn.disabled = false;
+                    if (nextBtn) nextBtn.disabled = false;
+                    if (detectCurrentBtn) {
+                        detectCurrentBtn.disabled = false;
+                        detectCurrentBtn.innerHTML = '<span>🔍</span> Detect Current Image';
+                    }
                 }
             };
         } else {
@@ -145,24 +170,49 @@ window.openExportModal = () => {
         if (detectCurrentBtn) {
             detectCurrentBtn.onclick = () => {
                 console.log('[AI] Detect button clicked');
-                runDetection();
+                if (aiModeEnabled && total > 0) {
+                    // Start batch detection with animation
+                    const aiSection = document.querySelector('.ai-mode-section');
+                    if (aiSection) aiSection.classList.add('ai-working');
+                    setCanvasInteraction(false);
+                    startBatchDetection();
+                } else if (total > 0) {
+                    // Single image detection
+                    runDetection(false);
+                }
             };
         } else {
             console.warn('[AI] detectCurrentBtn not found!');
         }
     }
     
-    function updateAIStatus(status) {
+    function updateAIStatus(status, extra = '') {
         if (!aiStatus) return;
         aiStatus.className = 'ai-status';
         if (status === 'active') {
             aiStatus.textContent = 'ON';
             aiStatus.classList.add('active');
         } else if (status === 'loading') {
-            aiStatus.textContent = 'Detecting...';
+            aiStatus.textContent = extra || 'Detecting...';
+            aiStatus.classList.add('loading');
+        } else if (status === 'batch') {
+            aiStatus.textContent = extra || 'Batch...';
             aiStatus.classList.add('loading');
         } else {
             aiStatus.textContent = '';
+        }
+    }
+    
+    function setCanvasInteraction(enabled) {
+        const canvasArea = document.getElementById('canvas-container');
+        if (!canvasArea) return;
+        
+        if (enabled) {
+            canvasArea.classList.remove('ai-locked');
+            canvas.style.pointerEvents = 'auto';
+        } else {
+            canvasArea.classList.add('ai-locked');
+            canvas.style.pointerEvents = 'none';
         }
     }
     
@@ -185,21 +235,27 @@ window.openExportModal = () => {
         return { model, conf, classes };
     }
     
-    async function runDetection() {
+    async function runDetection(continueToNext = false) {
         if (isDetecting || total === 0) return;
         
         const relPath = images[currentIndex];
         if (!relPath) return;
         
         isDetecting = true;
-        updateAIStatus('loading');
         
-        if (detectCurrentBtn) {
+        if (isBatchDetecting) {
+            updateAIStatus('batch', `${currentIndex + 1}/${total}`);
+        } else {
+            updateAIStatus('loading');
+        }
+        
+        if (detectCurrentBtn && !isBatchDetecting) {
             detectCurrentBtn.disabled = true;
             detectCurrentBtn.innerHTML = '<span>⏳</span> Detecting...';
         }
         
         const params = getDetectionParams();
+        let detectedCount = 0;
         
         try {
             const res = await fetch('/api/detect', {
@@ -230,27 +286,206 @@ window.openExportModal = () => {
                     updateBoxList();
                     redraw();
                     
-                    console.log(`[AI] Detected ${result.detections.length} objects`);
+                    detectedCount = result.detections.length;
+                    batchTotalBoxes += detectedCount;
+                    console.log(`[AI] Detected ${detectedCount} objects`);
                 } else {
                     console.log('[AI] No objects detected');
+                }
+                
+                // Batch mode: continue to next image
+                if (isBatchDetecting && aiModeEnabled) {
+                    batchDetectedCount++;
+                    
+                    if (currentIndex < total - 1) {
+                        // Move to next image and continue detection
+                        isDetecting = false;
+                        loadIndexForBatch(currentIndex + 1);
+                        return;
+                    } else {
+                        // Reached last image - finish batch
+                        finishBatchDetection();
+                        return;
+                    }
                 }
             } else {
                 const errText = await res.text();
                 console.error('[AI] Detection failed:', errText);
-                alert('Detection failed: ' + errText);
+                if (!isBatchDetecting) {
+                    alert('Detection failed: ' + errText);
+                }
+                // Stop batch on error
+                if (isBatchDetecting) {
+                    finishBatchDetection(true);
+                    return;
+                }
             }
         } catch (e) {
             console.error('[AI] Error:', e);
-            alert('Detection error: ' + e.message);
+            if (!isBatchDetecting) {
+                alert('Detection error: ' + e.message);
+            }
+            if (isBatchDetecting) {
+                finishBatchDetection(true);
+                return;
+            }
         } finally {
             isDetecting = false;
-            updateAIStatus(aiModeEnabled ? 'active' : '');
             
-            if (detectCurrentBtn) {
-                detectCurrentBtn.disabled = false;
-                detectCurrentBtn.innerHTML = '<span>🔍</span> Detect Current Image';
+            if (!isBatchDetecting) {
+                updateAIStatus(aiModeEnabled ? 'active' : '');
+                
+                if (detectCurrentBtn) {
+                    detectCurrentBtn.disabled = false;
+                    detectCurrentBtn.innerHTML = '<span>🔍</span> Detect Current Image';
+                }
             }
         }
+    }
+    
+    function loadIndexForBatch(idx) {
+        // Save current annotations
+        const currentPath = images[currentIndex];
+        if (currentPath) {
+            annotations[currentPath] = JSON.parse(JSON.stringify(boxes));
+        }
+        
+        if (idx >= total) {
+            finishBatchDetection();
+            return;
+        }
+        
+        currentIndex = idx;
+        const relPath = images[currentIndex];
+        if (filenameDisplay) filenameDisplay.textContent = relPath;
+        if (progressText) progressText.textContent = `${currentIndex + 1} / ${total}`;
+        
+        const url = new URL('/image', window.location.origin);
+        url.searchParams.set('mode', 'folder');
+        url.searchParams.set('rel_path', relPath);
+        url.searchParams.set('img_dir', data.img_dir);
+        
+        currentImage = new Image();
+        currentImage.src = url.toString();
+        currentImage.onload = () => {
+            fitImageToCanvas();
+            boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
+            boxHistory = [];
+            activeBoxIdx = -1;
+            updateBoxList();
+            redraw();
+            
+            // Continue batch detection
+            if (isBatchDetecting && aiModeEnabled) {
+                runDetection(true);
+            }
+        };
+    }
+    
+    function startBatchDetection() {
+        if (isBatchDetecting || total === 0) return;
+        
+        isBatchDetecting = true;
+        batchStartTime = Date.now();
+        batchDetectedCount = 0;
+        batchTotalBoxes = 0;
+        
+        // Add working animation to AI section
+        const aiSection = document.querySelector('.ai-mode-section');
+        if (aiSection) aiSection.classList.add('ai-working');
+        
+        // Disable controls during batch
+        if (detectCurrentBtn) {
+            detectCurrentBtn.disabled = true;
+            detectCurrentBtn.innerHTML = '<span>⏳</span> Batch Running...';
+        }
+        if (prevBtn) prevBtn.disabled = true;
+        if (nextBtn) nextBtn.disabled = true;
+        
+        // Start from current image
+        runDetection(true);
+    }
+    
+    function finishBatchDetection(hasError = false) {
+        isBatchDetecting = false;
+        isDetecting = false;
+        
+        const elapsed = ((Date.now() - batchStartTime) / 1000).toFixed(1);
+        
+        // Remove working animation
+        const aiSection = document.querySelector('.ai-mode-section');
+        if (aiSection) aiSection.classList.remove('ai-working');
+        
+        // Disable AI mode
+        aiModeEnabled = false;
+        if (aiModeToggle) aiModeToggle.checked = false;
+        if (aiOptions) aiOptions.classList.add('hidden');
+        updateAIStatus('');
+        
+        // Re-enable canvas interaction
+        setCanvasInteraction(true);
+        
+        // Re-enable controls
+        if (detectCurrentBtn) {
+            detectCurrentBtn.disabled = false;
+            detectCurrentBtn.innerHTML = '<span>🔍</span> Detect Current Image';
+        }
+        if (prevBtn) prevBtn.disabled = false;
+        if (nextBtn) nextBtn.disabled = false;
+        
+        // Show result modal
+        showBatchResultModal({
+            elapsed,
+            imagesProcessed: batchDetectedCount,
+            totalImages: total,
+            totalBoxes: batchTotalBoxes,
+            hasError
+        });
+    }
+    
+    function showBatchResultModal(results) {
+        // Create modal if not exists
+        let modal = document.getElementById('batch-result-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'batch-result-modal';
+            modal.className = 'batch-modal';
+            modal.innerHTML = `
+                <div class="dataset-form" style="width: 400px; text-align: center;">
+                    <h2 style="margin-bottom: 1rem;">🎉 Batch Detection Complete</h2>
+                    <div id="batch-result-content" style="text-align: left; margin-bottom: 1.5rem;"></div>
+                    <button class="btn primary" id="close-batch-modal">Close (ESC)</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Close button
+            document.getElementById('close-batch-modal').onclick = () => {
+                modal.classList.add('hidden');
+            };
+        }
+        
+        // Update content
+        const content = document.getElementById('batch-result-content');
+        content.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; background: var(--bg-primary); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">⏱️ Elapsed Time</span>
+                    <span style="font-weight: 600;">${results.elapsed}s</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">🖼️ Images Processed</span>
+                    <span style="font-weight: 600;">${results.imagesProcessed} / ${results.totalImages}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">📦 Total Boxes Detected</span>
+                    <span style="font-weight: 600;">${results.totalBoxes}</span>
+                </div>
+                ${results.hasError ? '<div style="color: #ef4444; font-size: 0.9rem;">⚠️ Stopped due to error</div>' : ''}
+            </div>
+        `;
+        
+        modal.classList.remove('hidden');
     }
 
     // --- History ---
@@ -309,10 +544,8 @@ window.openExportModal = () => {
             updateBoxList();
             redraw();
             
-            // Auto-detect if AI mode is enabled and no existing boxes
-            if (aiModeEnabled && boxes.length === 0) {
-                runDetection();
-            }
+            // Note: Auto-detect is now handled by batch mode
+            // Manual navigation doesn't auto-detect anymore
         };
     }
 
@@ -744,6 +977,19 @@ window.openExportModal = () => {
 
     // --- Keyboard ---
     document.addEventListener('keydown', (e) => {
+        // ESC to close modals
+        if (e.key === 'Escape') {
+            const batchModal = document.getElementById('batch-result-modal');
+            if (batchModal && !batchModal.classList.contains('hidden')) {
+                batchModal.classList.add('hidden');
+                return;
+            }
+            if (exportModal && !exportModal.classList.contains('hidden')) {
+                exportModal.classList.add('hidden');
+                return;
+            }
+        }
+        
         if (e.target.tagName === 'INPUT') return;
 
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
@@ -753,9 +999,11 @@ window.openExportModal = () => {
         }
 
         if (e.key === 'd' || e.key === 'ArrowRight') {
+            if (isBatchDetecting) return; // Disable during batch
             saveCurrent();
             loadIndex(currentIndex + 1);
         } else if (e.key === 'a' || e.key === 'ArrowLeft') {
+            if (isBatchDetecting) return; // Disable during batch
             saveCurrent();
             loadIndex(currentIndex - 1);
         } else if (e.key === 'Delete' || e.key === 'Backspace') {

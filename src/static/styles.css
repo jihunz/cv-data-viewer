@@ -216,7 +216,7 @@ input[type="text"]:focus {
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
 }
 
 .loading .dataset-form {
@@ -501,7 +501,7 @@ input[type="text"]:focus {
   font-weight: 500;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   z-index: 100;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
   border: 1px solid var(--border);
   display: flex;
   align-items: center;
