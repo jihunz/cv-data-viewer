@@ -60,15 +60,15 @@
       console.error('Images array is empty:', data);
     }
 
-    const metaParts = [];
-    if (mode === 'txt' && data.train_file) {
-      metaParts.push(`Train: ${data.train_file}`);
-    } else if (data.img_dir) {
-      metaParts.push(`Images: ${data.img_dir}`);
-    }
-    if (data.label_dir) {
-      metaParts.push(`Labels: ${data.label_dir}`);
-    }
+  const metaParts = [];
+  if (mode === 'txt' && data.train_file) {
+    metaParts.push(`Train: ${data.train_file}`);
+  } else if (data.img_dir) {
+    metaParts.push(`Images: ${data.img_dir}`);
+  }
+  if (data.label_dir) {
+    metaParts.push(`Labels: ${data.label_dir}`);
+  }
     
     if (pathsEl) {
         pathsEl.textContent = metaParts.join(' | ') || 'No paths info';
@@ -300,7 +300,7 @@
     const img = document.createElement('img');
     img.className = 'grid-image';
     img.loading = 'lazy';
-    
+
     const imgUrl = new URL('/image', window.location.origin);
     imgUrl.searchParams.set('mode', mode);
     imgUrl.searchParams.set('rel_path', entry.rel_path);
@@ -581,7 +581,7 @@
           if (ev.key === 'Enter') {
               performSearch();
           }
-      });
+    });
   }
 
   // Jump to Index listener
@@ -617,7 +617,7 @@
         goToLast();
     } else if (ev.key === ' ' || ev.key === 'Enter') {
       if (ev.key === 'Enter') {
-          ev.preventDefault();
+      ev.preventDefault();
           excludeSelected();
       }
     }

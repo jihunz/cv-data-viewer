@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV Data Annotator</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Annotator Specific Styles */
+        body { overflow: hidden; }
+        .annotator-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            grid-template-rows: 50px 1fr 60px;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .ann-header {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.5rem;
+        }
+
+        .ann-sidebar {
+            grid-row: 2 / 3;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .ann-canvas-area {
+            grid-column: 2 / 3;
+            grid-row: 2 / 3;
+            background: #0f1115;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        .ann-footer {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+        }
+
+        /* Sidebar Components */
+        .tool-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .tool-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .class-input {
+            width: 100%;
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: white;
+            border-radius: 6px;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        /* Canvas Elements */
+        #work-canvas {
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        
+        .image-meta {
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            padding: 0.5rem 1rem;
+            border-radius: 99px;
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="annotator-layout">
+        <!-- Header -->
+        <header class="ann-header">
+            <a href="/" class="brand" style="text-decoration: none;">
+                CV Data <span>Annotator</span>
+            </a>
+            <div class="header-controls">
+                <button class="btn primary" id="save-btn">Save Progress</button>
+                <button class="btn danger" id="export-btn" onclick="window.openExportModal()">Export Dataset</button>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="ann-sidebar">
+            <div class="tool-group">
+                <label class="tool-label">Active Class ID</label>
+                <input type="number" id="class-id" class="class-input" value="0" min="0" />
+                <small style="color: var(--text-secondary); font-size: 0.75rem;">Press 0-9 to switch</small>
+            </div>
+
+            <div class="tool-group">
+                <label class="tool-label">Tools</label>
+                <label class="setting-row">
+                    <input type="checkbox" id="auto-copy" checked />
+                    <span>Copy boxes to next image</span>
+                </label>
+            </div>
+
+            <div class="tool-group">
+                <label class="tool-label">Box List</label>
+                <ul id="box-list" style="list-style: none; max-height: 300px; overflow-y: auto;">
+                    <!-- Dynamic List -->
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Main Canvas -->
+        <main class="ann-canvas-area" id="canvas-container">
+            <canvas id="work-canvas"></canvas>
+            <div class="image-meta" id="filename-display">Loading...</div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="ann-footer">
+            <div class="control-group">
+                <span id="progress-text">0 / 0</span>
+            </div>
+            <div class="control-group">
+                <button class="btn" id="prev-btn">← Prev (A)</button>
+                <button class="btn primary" id="next-btn">Next (D) →</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="export-modal" class="loading hidden">
+        <div class="dataset-form" style="width: 450px; text-align: left;">
+            <h2 style="margin-bottom: 1.5rem;">Export Dataset</h2>
+            
+            <div class="input-grid">
+                <div class="mode-field">
+                    <label class="input-label" style="margin-bottom: 0.75rem;">Target Resolution</label>
+                    
+                    <!-- Preset Resolution Radio Buttons -->
+                    <div class="resolution-presets" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+                        <label class="resolution-option">
+                            <input type="radio" name="resolution" value="640x480" checked onchange="applyResolutionPreset(this.value)">
+                            <span>640 × 480</span>
+                            <small>VGA</small>
+                        </label>
+                        <label class="resolution-option">
+                            <input type="radio" name="resolution" value="1280x720" onchange="applyResolutionPreset(this.value)">
+                            <span>1280 × 720</span>
+                            <small>HD (720p)</small>
+                        </label>
+                        <label class="resolution-option">
+                            <input type="radio" name="resolution" value="1920x1080" onchange="applyResolutionPreset(this.value)">
+                            <span>1920 × 1080</span>
+                            <small>Full HD (1080p)</small>
+                        </label>
+                        <label class="resolution-option">
+                            <input type="radio" name="resolution" value="custom" onchange="applyResolutionPreset(this.value)">
+                            <span>Custom</span>
+                            <small>직접 입력</small>
+                        </label>
+                    </div>
+                    
+                    <!-- Custom Resolution Input -->
+                    <div id="custom-resolution" class="custom-resolution-inputs" style="display: none;">
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="number" id="resize-w" placeholder="Width" value="640" style="width: 100px;" />
+                            <span>×</span>
+                            <input type="number" id="resize-h" placeholder="Height" value="480" style="width: 100px;" />
+                        </div>
+                    </div>
+                    
+                    <p class="label-hint" style="margin-top: 0.75rem;">
+                        Images will be stretched to this size. Labels are normalized so they remain valid.
+                    </p>
+                </div>
+            </div>
+
+            <div class="action-bar" style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                <button class="btn" id="cancel-export">Cancel</button>
+                <button class="btn primary" id="confirm-export" onclick="window.handleExport()">Download ZIP</button>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .resolution-option {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .resolution-option:hover {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+        }
+        .resolution-option input[type="radio"] {
+            accent-color: var(--accent);
+            width: 16px;
+            height: 16px;
+        }
+        .resolution-option input[type="radio"]:checked + span {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .resolution-option span {
+            flex: 1;
+            font-size: 0.95rem;
+        }
+        .resolution-option small {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+        .custom-resolution-inputs input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .custom-resolution-inputs input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+    </style>
+
+    <!-- Data Injection -->
+    <script>
+        window.annotateData = {{ data_json | safe }};
+        
+        // Inline definition to guarantee availability regardless of external script loading/caching
+        window.openExportModal = function() {
+            const modal = document.getElementById('export-modal');
+            if (modal) modal.classList.remove('hidden');
+            else alert("Export modal element not found in DOM!");
+        };
+        
+        // Resolution preset handler
+        function applyResolutionPreset(value) {
+            const customDiv = document.getElementById('custom-resolution');
+            const wInput = document.getElementById('resize-w');
+            const hInput = document.getElementById('resize-h');
+            
+            if (value === 'custom') {
+                customDiv.style.display = 'block';
+                wInput.focus();
+            } else {
+                customDiv.style.display = 'none';
+                const [w, h] = value.split('x').map(Number);
+                wInput.value = w;
+                hInput.value = h;
+            }
+        }
+    </script>
+    <script src="/static/annotator.js"></script>
+</body>
+</html>
+

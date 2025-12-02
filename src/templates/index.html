@@ -51,12 +51,17 @@
                     <input type="radio" name="mode" id="mode-folder" value="folder" {% if current_mode == 'folder' %}checked{% endif %} />
                     <label for="mode-folder" class="mode-option">
                         <span class="mode-title">폴더</span>
-                        <span class="mode-desc">로컬 이미지/라벨 폴더를 직접 지정</span>
+                        <span class="mode-desc">로컬 이미지/라벨 폴더 탐색</span>
                     </label>
                     <input type="radio" name="mode" id="mode-txt" value="txt" {% if current_mode == 'txt' %}checked{% endif %} />
                     <label for="mode-txt" class="mode-option">
                         <span class="mode-title">train.txt</span>
-                        <span class="mode-desc">학습 리스트 파일을 사용해 경로 불러오기</span>
+                        <span class="mode-desc">학습 리스트 파일</span>
+                    </label>
+                    <input type="radio" name="mode" id="mode-annotate" value="annotate" />
+                    <label for="mode-annotate" class="mode-option">
+                        <span class="mode-title">Annotate</span>
+                        <span class="mode-desc">새로운 데이터셋 제작</span>
                     </label>
                 </div>
             </fieldset>
@@ -107,7 +112,7 @@
         const progressBar = document.getElementById('loading-progress');
         const percentText = document.getElementById('loading-percent');
         const modeRadios = Array.from(form.querySelectorAll('input[name="mode"]'));
-        const folderField = form.querySelector('.mode-field[data-mode="folder"]');
+        const folderFields = form.querySelectorAll('.mode-field[data-mode="folder"]');
         const txtField = form.querySelector('.mode-field[data-mode="txt"]');
         const imgDirInput = form.querySelector('input[name="img_dir"]');
         const trainFileInput = form.querySelector('input[name="train_file"]');
@@ -138,17 +143,49 @@
 
         function applyMode(mode) {
             if (mode === 'txt') {
-                folderField.classList.add('hidden');
+                folderFields.forEach(el => el.classList.add('hidden'));
                 txtField.classList.remove('hidden');
                 imgDirInput.disabled = true;
                 imgDirInput.required = false;
+                labelDirInput.disabled = true;
+                labelDirInput.required = false;
                 trainFileInput.disabled = false;
                 trainFileInput.required = true;
+            } else if (mode === 'annotate') {
+                // Annotate mode: Hide label dir completely
+                folderFields.forEach(el => {
+                    // Hide label dir field
+                    if (el.querySelector('input[name="label_dir"]')) {
+                        el.classList.add('hidden');
+                    } else if (el.querySelector('input[name="img_dir"]')) {
+                        // Show image dir field
+                        el.classList.remove('hidden');
+                        imgDirInput.disabled = false;
+                        imgDirInput.required = true;
+                    }
+                });
+                // Hide shared label field (if structured that way)
+                const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
+                if (sharedLabelField) sharedLabelField.classList.add('hidden');
+                
+                labelDirInput.disabled = true;
+                labelDirInput.required = false;
+                
+                txtField.classList.add('hidden');
+                trainFileInput.disabled = true;
+                trainFileInput.required = false;
             } else {
-                folderField.classList.remove('hidden');
+                // Folder mode
+                folderFields.forEach(el => el.classList.remove('hidden'));
+                // Show shared label field
+                const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
+                if (sharedLabelField) sharedLabelField.classList.remove('hidden');
+
                 txtField.classList.add('hidden');
                 imgDirInput.disabled = false;
                 imgDirInput.required = true;
+                labelDirInput.disabled = false;
+                labelDirInput.required = true;
                 trainFileInput.disabled = true;
                 trainFileInput.required = false;
             }
@@ -170,14 +207,35 @@
             const trainFile = trainFileInput.value.trim();
             const labelDir = labelDirInput.value.trim();
 
-            if (!labelDir) {
+            // Check label dir ONLY if not annotate mode
+            if (mode !== 'annotate' && !labelDir) {
                 showToast('Label directory is required', 'error');
                 return;
             }
-            if (mode === 'folder' && !imgDir) {
-                showToast('Image directory is required for folder mode', 'error');
+            
+            if (mode === 'folder') {
+                if (!imgDir) {
+                    showToast('Image directory is required for folder mode', 'error');
+                    return;
+                }
+                if (!labelDir) {
+                    showToast('Label directory is required for folder mode', 'error');
+                    return;
+                }
+            }
+
+            if (mode === 'annotate') {
+                if (!imgDir) {
+                    showToast('Image directory is required for annotation', 'error');
+                    return;
+                }
+                // Direct redirect for annotate mode
+                const params = new URLSearchParams();
+                params.set('img_dir', imgDir);
+                window.location.href = `/annotate?${params.toString()}`;
                 return;
             }
+
             if (mode === 'txt' && !trainFile) {
                 showToast('Train file path is required for txt mode', 'error');
                 return;

@@ -30,7 +30,7 @@ body {
 
 /* --- Landing Page (Index) --- */
 .index-body {
-  display: flex;
+    display: flex;
   align-items: center;
   justify-content: center;
   background: radial-gradient(circle at top right, #1e293b 0%, #0f1115 100%);
@@ -41,7 +41,7 @@ body {
   width: 100%;
   max-width: 1200px;
   padding: 2rem;
-  display: grid;
+    display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4rem;
   align-items: center;
@@ -61,7 +61,7 @@ body {
 .hero-copy p {
   font-size: 1.125rem;
   color: var(--text-secondary);
-  line-height: 1.6;
+    line-height: 1.6;
   margin-bottom: 2rem;
 }
 
@@ -93,12 +93,12 @@ body {
 }
 
 .mode-toggle {
-  border: none;
+    border: none;
   margin-bottom: 2rem;
 }
 
 .mode-options {
-  display: grid;
+    display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   background: #111;
@@ -114,7 +114,7 @@ body {
   padding: 0.75rem;
   text-align: center;
   border-radius: 8px;
-  cursor: pointer;
+    cursor: pointer;
   transition: all 0.2s;
   border: 1px solid transparent;
 }
@@ -139,14 +139,14 @@ body {
 }
 
 .input-grid {
-  display: flex;
-  flex-direction: column;
+    display: flex;
+    flex-direction: column;
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
 
 .input-label {
-  display: flex;
+    display: flex;
   justify-content: space-between;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
@@ -170,7 +170,7 @@ input[type="text"] {
 }
 
 input[type="text"]:focus {
-  outline: none;
+    outline: none;
   border-color: var(--accent);
 }
 
@@ -179,11 +179,11 @@ input[type="text"]:focus {
   padding: 1rem;
   background-color: var(--accent);
   color: white;
-  border: none;
+    border: none;
   border-radius: 8px;
   font-weight: 600;
   font-size: 1rem;
-  cursor: pointer;
+    cursor: pointer;
   transition: background-color 0.2s;
 }
 
@@ -202,12 +202,46 @@ input[type="text"]:focus {
   display: none !important;
 }
 
+/* --- Modal Overlay --- */
+.loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.loading .dataset-form {
+  max-width: 450px;
+  width: 90%;
+  animation: modalIn 0.2s ease-out;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 /* --- Viewer Page (Dashboard) --- */
 .viewer-header {
   height: 50px;
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  display: flex;
+    display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 1.5rem;
@@ -284,10 +318,10 @@ input[type="text"]:focus {
 
 .grid-item:hover::after {
   content: '';
-  position: absolute;
+    position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(255, 255, 255, 0.05);
-  pointer-events: none;
+    pointer-events: none;
 }
 
 .search-input {
@@ -323,7 +357,7 @@ input[type="text"]:focus {
   top: 10px;
   right: 10px;
   background: #10b981;
-  color: white;
+    color: white;
   font-weight: bold;
   font-size: 0.8rem;
   padding: 2px 8px;
@@ -398,7 +432,7 @@ input[type="text"]:focus {
 }
 
 .control-group {
-  display: flex;
+    display: flex;
   gap: 0.5rem;
   align-items: center;
 }
@@ -472,7 +506,7 @@ input[type="text"]:focus {
   display: flex;
   align-items: center;
   gap: 1rem;
-}
+    }
 
 .toast-content {
   flex: 1;
@@ -484,7 +518,7 @@ input[type="text"]:focus {
   margin-left: 1rem;
   padding-left: 1rem;
   border-left: 1px solid rgba(255, 255, 255, 0.2);
-}
+    }
 
 .toast-btn {
   background: rgba(255, 255, 255, 0.1);
