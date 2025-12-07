@@ -53,6 +53,9 @@ window.openExportModal = () => {
     // Annotation Store
     const annotations = {}; 
     
+    // Track images that have been loaded from file (to preserve edits)
+    const loadedFromFile = new Set(); 
+    
     // Canvas State
     let currentImage = new Image();
     let boxes = [];
@@ -398,11 +401,16 @@ window.openExportModal = () => {
         currentImage.onload = async () => {
             fitImageToCanvas();
             
-            // When labelDir is set, always try to load from file first
             if (labelDir) {
-                const loadedLabels = await loadExistingLabels(relPath);
-                boxes = loadedLabels;
-                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+                // Label edit mode: load from file only on first visit
+                if (loadedFromFile.has(relPath)) {
+                    boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
+                } else {
+                    const loadedLabels = await loadExistingLabels(relPath);
+                    boxes = loadedLabels;
+                    annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+                    loadedFromFile.add(relPath);
+                }
             } else {
                 const cachedAnnotations = annotations[relPath];
                 const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
@@ -585,12 +593,18 @@ window.openExportModal = () => {
         currentImage.onload = async () => {
             fitImageToCanvas();
             
-            // When labelDir is set, always try to load from file first
             if (labelDir) {
-                // Load existing labels from label directory
-                const loadedLabels = await loadExistingLabels(relPath);
-                boxes = loadedLabels;
-                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+                // Label edit mode: load from file only on first visit, then use memory
+                if (loadedFromFile.has(relPath)) {
+                    // Already loaded - use annotations from memory (preserves edits)
+                    boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
+                } else {
+                    // First visit - load from file
+                    const loadedLabels = await loadExistingLabels(relPath);
+                    boxes = loadedLabels;
+                    annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+                    loadedFromFile.add(relPath);
+                }
             } else {
                 // No labelDir: use cached annotations or empty
                 const cachedAnnotations = annotations[relPath];
