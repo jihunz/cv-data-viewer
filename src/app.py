@@ -429,20 +429,20 @@ def get_image(
 ):
     mode = (mode or "folder").lower()
     try:
-    if mode == "folder":
+        if mode == "folder":
             if not img_dir: raise HTTPException(400, "Image dir required")
-        img_dir_path = resolve_dataset_path(img_dir)
+            img_dir_path = resolve_dataset_path(img_dir)
             img_path = img_dir_path / rel_path
             if img_path.exists():
-        return FileResponse(img_path)
+                return FileResponse(img_path)
         else:
             if not train_file: raise HTTPException(400, "Train file required")
-    train_file_path = resolve_dataset_path(train_file)
+            train_file_path = resolve_dataset_path(train_file)
             label_dir_path = resolve_dataset_path(label_dir) if label_dir else None
-    entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
+            entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
             if entry and entry.image_path.is_file():
-    return FileResponse(entry.image_path)
-
+                return FileResponse(entry.image_path)
+            
             # Fallback
             candidate = resolve_path_with_base(rel_path, train_file_path.parent)
             if candidate.exists():
@@ -475,7 +475,7 @@ def get_labels(
         label_dir_path = resolve_dataset_path(label_dir)
         entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
         if entry:
-        label_path = entry.label_path
+            label_path = entry.label_path
 
     labels = []
     if label_path and label_path.exists():
@@ -516,8 +516,8 @@ def get_annotate_labels(
     labels = []
     if label_path.exists():
         try:
-    with label_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
+            with label_path.open("r", encoding="utf-8") as fh:
+                for line in fh:
                     parts = line.strip().split()
                     if len(parts) >= 5:
                         # [class_id, x_center, y_center, width, height]
@@ -636,7 +636,7 @@ def detect_objects(request: Request, payload: dict):
                 
                 # Filter by class if specified
                 if filter_classes is not None and cls_id not in filter_classes:
-                continue
+                    continue
                 
                 # Get bbox in xywhn format (normalized center x, y, width, height)
                 xywhn = boxes.xywhn[i].tolist()
