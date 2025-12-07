@@ -579,14 +579,19 @@ window.openExportModal = () => {
         currentImage.onload = async () => {
             fitImageToCanvas();
             
-            // Check if we already have annotations in memory
-            if (annotations[relPath]) {
-                boxes = JSON.parse(JSON.stringify(annotations[relPath]));
+            // Check if we already have annotations in memory (and not empty)
+            const cachedAnnotations = annotations[relPath];
+            const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
+            
+            if (hasCachedAnnotations) {
+                boxes = JSON.parse(JSON.stringify(cachedAnnotations));
             } else if (labelDir) {
                 // Load existing labels from label directory
                 const loadedLabels = await loadExistingLabels(relPath);
                 boxes = loadedLabels;
-                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+                if (loadedLabels.length > 0) {
+                    annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+                }
             } else {
                 boxes = [];
             }
