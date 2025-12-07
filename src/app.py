@@ -380,7 +380,7 @@ def viewer(
         prefill["img_dir"] = img_dir
         if not img_dir:
             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Image directory required", "prefill": prefill}, status_code=400)
-        
+
         img_dir_path = resolve_dataset_path(img_dir)
         if not img_dir_path.exists():
             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": f"Invalid image directory: {img_dir}", "prefill": prefill}, status_code=400)
@@ -400,11 +400,11 @@ def viewer(
         prefill["train_file"] = train_file
         if not train_file:
             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Train file required", "prefill": prefill}, status_code=400)
-        
+
         train_file_path = resolve_dataset_path(train_file)
         if not train_file_path.exists():
              return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": f"Invalid train file: {train_file}", "prefill": prefill}, status_code=400)
-        
+
         entries = load_train_entries(train_file_path, label_dir_path)
         if not entries:
              return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "No valid entries in train file", "prefill": prefill}, status_code=400)
@@ -429,20 +429,20 @@ def get_image(
 ):
     mode = (mode or "folder").lower()
     try:
-        if mode == "folder":
+    if mode == "folder":
             if not img_dir: raise HTTPException(400, "Image dir required")
-            img_dir_path = resolve_dataset_path(img_dir)
+        img_dir_path = resolve_dataset_path(img_dir)
             img_path = img_dir_path / rel_path
             if img_path.exists():
-                return FileResponse(img_path)
+        return FileResponse(img_path)
         else:
             if not train_file: raise HTTPException(400, "Train file required")
-            train_file_path = resolve_dataset_path(train_file)
+    train_file_path = resolve_dataset_path(train_file)
             label_dir_path = resolve_dataset_path(label_dir) if label_dir else None
-            entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
+    entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
             if entry and entry.image_path.is_file():
-                return FileResponse(entry.image_path)
-            
+    return FileResponse(entry.image_path)
+
             # Fallback
             candidate = resolve_path_with_base(rel_path, train_file_path.parent)
             if candidate.exists():
@@ -463,7 +463,7 @@ def get_labels(
 ):
     mode = (mode or "folder").lower()
     label_path = None
-    
+
     if mode == "folder":
         if not label_dir: raise HTTPException(400, "Label dir required")
         label_dir_path = resolve_dataset_path(label_dir)
@@ -475,7 +475,7 @@ def get_labels(
         label_dir_path = resolve_dataset_path(label_dir)
         entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
         if entry:
-            label_path = entry.label_path
+        label_path = entry.label_path
 
     labels = []
     if label_path and label_path.exists():
@@ -512,12 +512,12 @@ def get_annotate_labels(
     
     label_rel = Path(rel_path).with_suffix(LABEL_EXT)
     label_path = label_dir_path / label_rel
-    
+
     labels = []
     if label_path.exists():
         try:
-            with label_path.open("r", encoding="utf-8") as fh:
-                for line in fh:
+    with label_path.open("r", encoding="utf-8") as fh:
+        for line in fh:
                     parts = line.strip().split()
                     if len(parts) >= 5:
                         # [class_id, x_center, y_center, width, height]
@@ -636,7 +636,7 @@ def detect_objects(request: Request, payload: dict):
                 
                 # Filter by class if specified
                 if filter_classes is not None and cls_id not in filter_classes:
-                    continue
+                continue
                 
                 # Get bbox in xywhn format (normalized center x, y, width, height)
                 xywhn = boxes.xywhn[i].tolist()
@@ -651,7 +651,7 @@ def detect_objects(request: Request, payload: dict):
                     round(xywhn[3], 6),
                     round(conf, 4)
                 ])
-        
+
         return JSONResponse({
             "status": "success",
             "image": rel_path,
@@ -695,7 +695,7 @@ def scan_progress(
                 return
             images = list_images(img_path, lbl_path)
         else:
-            if not train_file: 
+            if not train_file:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Missing train file'})}\n\n"
                 return
             tf_path = resolve_dataset_path(train_file)
@@ -710,7 +710,7 @@ def scan_progress(
 
         # Fast progress simulation since list is already loaded
         yield f"data: {json.dumps({'status': 'progress', 'progress': 100, 'eta': 0})}\n\n"
-        
+
         params = [("mode", mode), ("label_dir", label_dir)]
         if mode == "folder": params.append(("img_dir", img_dir))
         else: params.append(("train_file", train_file))

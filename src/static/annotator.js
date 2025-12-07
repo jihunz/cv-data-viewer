@@ -398,21 +398,20 @@ window.openExportModal = () => {
         currentImage.onload = async () => {
             fitImageToCanvas();
             
-            // Check if we already have annotations in memory (and not empty)
-            const cachedAnnotations = annotations[relPath];
-            const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
-            
-            if (hasCachedAnnotations) {
-                boxes = JSON.parse(JSON.stringify(cachedAnnotations));
-            } else if (labelDir) {
-                // Load existing labels from label directory
+            // When labelDir is set, always try to load from file first
+            if (labelDir) {
                 const loadedLabels = await loadExistingLabels(relPath);
                 boxes = loadedLabels;
-                if (loadedLabels.length > 0) {
-                    annotations[relPath] = JSON.parse(JSON.stringify(boxes));
-                }
+                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
             } else {
-                boxes = [];
+                const cachedAnnotations = annotations[relPath];
+                const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
+                
+                if (hasCachedAnnotations) {
+                    boxes = JSON.parse(JSON.stringify(cachedAnnotations));
+                } else {
+                    boxes = [];
+                }
             }
             
             boxHistory = [];
@@ -560,8 +559,10 @@ window.openExportModal = () => {
         if (idx < 0) idx = 0;
         if (idx >= total) idx = total - 1;
         
+        // Note: "Copy boxes to next image" is disabled when labelDir is set
+        // because we want to load existing labels from files
         let isCopied = false;
-        if (idx === currentIndex + 1 && autoCopyCheck && autoCopyCheck.checked && boxes.length > 0) {
+        if (!labelDir && idx === currentIndex + 1 && autoCopyCheck && autoCopyCheck.checked && boxes.length > 0) {
             const nextPath = images[idx];
             if (!annotations[nextPath]) {
                 annotations[nextPath] = JSON.parse(JSON.stringify(boxes));
@@ -584,21 +585,22 @@ window.openExportModal = () => {
         currentImage.onload = async () => {
             fitImageToCanvas();
             
-            // Check if we already have annotations in memory (and not empty)
-            const cachedAnnotations = annotations[relPath];
-            const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
-            
-            if (hasCachedAnnotations) {
-                boxes = JSON.parse(JSON.stringify(cachedAnnotations));
-            } else if (labelDir) {
+            // When labelDir is set, always try to load from file first
+            if (labelDir) {
                 // Load existing labels from label directory
                 const loadedLabels = await loadExistingLabels(relPath);
                 boxes = loadedLabels;
-                if (loadedLabels.length > 0) {
-                    annotations[relPath] = JSON.parse(JSON.stringify(boxes));
-                }
+                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
             } else {
-                boxes = [];
+                // No labelDir: use cached annotations or empty
+                const cachedAnnotations = annotations[relPath];
+                const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
+                
+                if (hasCachedAnnotations) {
+                    boxes = JSON.parse(JSON.stringify(cachedAnnotations));
+                } else {
+                    boxes = [];
+                }
             }
             
             boxHistory = [];
