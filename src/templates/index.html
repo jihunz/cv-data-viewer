@@ -61,7 +61,7 @@
                     <input type="radio" name="mode" id="mode-annotate" value="annotate" />
                     <label for="mode-annotate" class="mode-option">
                         <span class="mode-title">Annotate</span>
-                        <span class="mode-desc">새로운 데이터셋 제작</span>
+                        <span class="mode-desc">새 라벨링 또는 기존 라벨 수정</span>
                     </label>
                 </div>
             </fieldset>
@@ -90,6 +90,14 @@
                     </label>
                     <input id="label-dir-input" type="text" name="label_dir" placeholder="/path/to/labels" value="{{ prefill.label_dir if prefill else '' }}" required />
                 </div>
+
+                <div class="mode-field hidden" data-mode="annotate-label">
+                    <label for="annotate-label-dir-input" class="input-label">
+                        <span class="label-title">라벨 디렉터리 (선택)</span>
+                        <span class="label-hint">기존 라벨이 있으면 로드하여 수정</span>
+                    </label>
+                    <input id="annotate-label-dir-input" type="text" name="annotate_label_dir" placeholder="/path/to/labels (선택 사항)" value="" />
+                </div>
             </div>
 
             <div class="action-bar">
@@ -114,9 +122,11 @@
         const modeRadios = Array.from(form.querySelectorAll('input[name="mode"]'));
         const folderFields = form.querySelectorAll('.mode-field[data-mode="folder"]');
         const txtField = form.querySelector('.mode-field[data-mode="txt"]');
+        const annotateLabelField = form.querySelector('.mode-field[data-mode="annotate-label"]');
         const imgDirInput = form.querySelector('input[name="img_dir"]');
         const trainFileInput = form.querySelector('input[name="train_file"]');
         const labelDirInput = form.querySelector('input[name="label_dir"]');
+        const annotateLabelDirInput = form.querySelector('input[name="annotate_label_dir"]');
         let eventSource;
 
         function showToast(message, type = 'info') {
@@ -145,28 +155,31 @@
             if (mode === 'txt') {
                 folderFields.forEach(el => el.classList.add('hidden'));
                 txtField.classList.remove('hidden');
+                if (annotateLabelField) annotateLabelField.classList.add('hidden');
                 imgDirInput.disabled = true;
                 imgDirInput.required = false;
                 labelDirInput.disabled = true;
                 labelDirInput.required = false;
                 trainFileInput.disabled = false;
                 trainFileInput.required = true;
+                if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
             } else if (mode === 'annotate') {
-                // Annotate mode: Hide label dir completely
+                // Annotate mode: Show image dir + optional label dir
                 folderFields.forEach(el => {
-                    // Hide label dir field
                     if (el.querySelector('input[name="label_dir"]')) {
                         el.classList.add('hidden');
                     } else if (el.querySelector('input[name="img_dir"]')) {
-                        // Show image dir field
                         el.classList.remove('hidden');
                         imgDirInput.disabled = false;
                         imgDirInput.required = true;
                     }
                 });
-                // Hide shared label field (if structured that way)
                 const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
                 if (sharedLabelField) sharedLabelField.classList.add('hidden');
+                
+                // Show annotate label field (optional)
+                if (annotateLabelField) annotateLabelField.classList.remove('hidden');
+                if (annotateLabelDirInput) annotateLabelDirInput.disabled = false;
                 
                 labelDirInput.disabled = true;
                 labelDirInput.required = false;
@@ -177,9 +190,9 @@
             } else {
                 // Folder mode
                 folderFields.forEach(el => el.classList.remove('hidden'));
-                // Show shared label field
                 const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
                 if (sharedLabelField) sharedLabelField.classList.remove('hidden');
+                if (annotateLabelField) annotateLabelField.classList.add('hidden');
 
                 txtField.classList.add('hidden');
                 imgDirInput.disabled = false;
@@ -188,6 +201,7 @@
                 labelDirInput.required = true;
                 trainFileInput.disabled = true;
                 trainFileInput.required = false;
+                if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
             }
         }
 
@@ -232,6 +246,11 @@
                 // Direct redirect for annotate mode
                 const params = new URLSearchParams();
                 params.set('img_dir', imgDir);
+                // Optional label dir for loading existing labels
+                const annotateLabelDir = annotateLabelDirInput ? annotateLabelDirInput.value.trim() : '';
+                if (annotateLabelDir) {
+                    params.set('label_dir', annotateLabelDir);
+                }
                 window.location.href = `/annotate?${params.toString()}`;
                 return;
             }

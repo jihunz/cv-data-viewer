@@ -268,13 +268,22 @@ def index(request: Request):
 def annotate_page(
     request: Request,
     img_dir: str = Query(..., description="Path to image directory"),
+    label_dir: Optional[str] = Query(None, description="Path to label directory (optional, for loading existing labels)"),
 ):
-    print(f"[DEBUG] Annotate request for: {img_dir}")
+    print(f"[DEBUG] Annotate request for: {img_dir}, label_dir: {label_dir}")
     img_dir_path = resolve_dataset_path(img_dir)
     print(f"[DEBUG] Resolved path: {img_dir_path}, Is Dir: {img_dir_path.is_dir()}")
     
     if not img_dir_path.exists() or not img_dir_path.is_dir():
         raise HTTPException(status_code=404, detail=f"Image directory not found: {img_dir} (mapped: {img_dir_path})")
+
+    # Resolve label directory if provided
+    label_dir_path = None
+    if label_dir:
+        label_dir_path = resolve_dataset_path(label_dir)
+        if not label_dir_path.exists() or not label_dir_path.is_dir():
+            raise HTTPException(status_code=404, detail=f"Label directory not found: {label_dir} (mapped: {label_dir_path})")
+        print(f"[DEBUG] Label dir resolved: {label_dir_path}")
 
     images = []
     for p in sorted(img_dir_path.rglob("*")):
@@ -287,6 +296,7 @@ def annotate_page(
 
     data = {
         "img_dir": str(img_dir_path.resolve()),
+        "label_dir": str(label_dir_path.resolve()) if label_dir_path else None,
         "images": images
     }
 
@@ -486,6 +496,97 @@ def get_labels(
         "label": str(label_path) if label_path else "",
         "labels": labels
     })
+
+
+@app.get("/api/annotate/labels")
+def get_annotate_labels(
+    rel_path: str = Query(...),
+    label_dir: str = Query(...),
+):
+    """
+    Get labels for annotate mode (for loading existing labels).
+    """
+    label_dir_path = resolve_dataset_path(label_dir)
+    if not label_dir_path.exists():
+        raise HTTPException(404, f"Label directory not found: {label_dir}")
+    
+    label_rel = Path(rel_path).with_suffix(LABEL_EXT)
+    label_path = label_dir_path / label_rel
+    
+    labels = []
+    if label_path.exists():
+        try:
+            with label_path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    parts = line.strip().split()
+                    if len(parts) >= 5:
+                        # [class_id, x_center, y_center, width, height]
+                        labels.append([
+                            int(float(parts[0])),
+                            float(parts[1]),
+                            float(parts[2]),
+                            float(parts[3]),
+                            float(parts[4])
+                        ])
+        except Exception as e:
+            print(f"[ERROR] Failed to read label file {label_path}: {e}")
+    
+    return JSONResponse({
+        "rel_path": rel_path,
+        "labels": labels,
+        "label_file": str(label_path) if label_path.exists() else None
+    })
+
+
+@app.post("/api/annotate/save")
+def save_annotate_labels(request: Request, payload: dict):
+    """
+    Save labels for annotate mode.
+    
+    Payload:
+    {
+        "label_dir": str,          # Label directory path
+        "rel_path": str,           # Relative path of image
+        "boxes": [[cls, x, y, w, h], ...]  # Bounding boxes in YOLO format
+    }
+    """
+    label_dir = payload.get("label_dir")
+    rel_path = payload.get("rel_path")
+    boxes = payload.get("boxes", [])
+    
+    if not label_dir:
+        raise HTTPException(400, "Label directory is required")
+    if not rel_path:
+        raise HTTPException(400, "Relative path is required")
+    
+    label_dir_path = resolve_dataset_path(label_dir)
+    if not label_dir_path.exists():
+        raise HTTPException(404, f"Label directory not found: {label_dir}")
+    
+    # Create label file path
+    label_rel = Path(rel_path).with_suffix(LABEL_EXT)
+    label_path = label_dir_path / label_rel
+    
+    # Ensure parent directory exists
+    label_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Write YOLO format labels
+    try:
+        with label_path.open("w", encoding="utf-8") as fh:
+            for box in boxes:
+                if len(box) >= 5:
+                    line = f"{int(box[0])} {box[1]:.6f} {box[2]:.6f} {box[3]:.6f} {box[4]:.6f}"
+                    fh.write(line + "\n")
+        
+        print(f"[INFO] Saved labels to {label_path}")
+        return JSONResponse({
+            "status": "success",
+            "label_file": str(label_path),
+            "box_count": len(boxes)
+        })
+    except Exception as e:
+        print(f"[ERROR] Failed to save label file {label_path}: {e}")
+        raise HTTPException(500, f"Failed to save labels: {e}")
 
 @app.post("/api/detect")
 def detect_objects(request: Request, payload: dict):

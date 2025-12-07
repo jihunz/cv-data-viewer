@@ -47,6 +47,7 @@ window.openExportModal = () => {
     const data = window.annotateData || { images: [] };
     const images = data.images || [];
     const total = images.length;
+    const labelDir = data.label_dir || null; // Optional label directory for loading existing labels
     let currentIndex = 0;
     
     // Annotation Store
@@ -81,8 +82,14 @@ window.openExportModal = () => {
     let batchTotalBoxes = 0;
 
     // --- Initialization ---
-    function init() {
-        if (total > 0) loadIndex(0);
+    async function init() {
+        // Show label dir indicator if present
+        if (labelDir) {
+            console.log(`[Labels] Label directory: ${labelDir}`);
+            showLabelDirIndicator();
+        }
+        
+        if (total > 0) await loadIndex(0);
         window.addEventListener('resize', () => {
             fitImageToCanvas();
             redraw();
@@ -99,6 +106,27 @@ window.openExportModal = () => {
         
         // Initialize AI Mode
         initAIMode();
+    }
+    
+    function showLabelDirIndicator() {
+        // Add indicator to the UI showing label directory is active
+        const sidebar = document.querySelector('.ann-sidebar');
+        if (!sidebar) return;
+        
+        const indicator = document.createElement('div');
+        indicator.className = 'label-dir-indicator';
+        indicator.innerHTML = `
+            <div style="padding: 0.75rem; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--accent); border-radius: 8px; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                    <span style="font-size: 1rem;">📁</span>
+                    <span style="font-weight: 600; color: var(--accent);">라벨 수정 모드</span>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary); word-break: break-all;">
+                    ${labelDir}
+                </div>
+            </div>
+        `;
+        sidebar.insertBefore(indicator, sidebar.firstChild);
     }
 
     // --- AI Mode ---
@@ -343,7 +371,7 @@ window.openExportModal = () => {
         }
     }
     
-    function loadIndexForBatch(idx) {
+    async function loadIndexForBatch(idx) {
         // Save current annotations
         const currentPath = images[currentIndex];
         if (currentPath) {
@@ -367,9 +395,21 @@ window.openExportModal = () => {
         
         currentImage = new Image();
         currentImage.src = url.toString();
-        currentImage.onload = () => {
+        currentImage.onload = async () => {
             fitImageToCanvas();
-            boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
+            
+            // Check if we already have annotations in memory
+            if (annotations[relPath]) {
+                boxes = JSON.parse(JSON.stringify(annotations[relPath]));
+            } else if (labelDir) {
+                // Load existing labels from label directory
+                const loadedLabels = await loadExistingLabels(relPath);
+                boxes = loadedLabels;
+                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+            } else {
+                boxes = [];
+            }
+            
             boxHistory = [];
             activeBoxIdx = -1;
             updateBoxList();
@@ -506,7 +546,7 @@ window.openExportModal = () => {
     }
 
     // --- Logic ---
-    function loadIndex(idx) {
+    async function loadIndex(idx) {
         const currentPath = images[currentIndex];
         if (currentPath) {
             annotations[currentPath] = JSON.parse(JSON.stringify(boxes));
@@ -536,9 +576,21 @@ window.openExportModal = () => {
         
         currentImage = new Image();
         currentImage.src = url.toString();
-        currentImage.onload = () => {
+        currentImage.onload = async () => {
             fitImageToCanvas();
-            boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
+            
+            // Check if we already have annotations in memory
+            if (annotations[relPath]) {
+                boxes = JSON.parse(JSON.stringify(annotations[relPath]));
+            } else if (labelDir) {
+                // Load existing labels from label directory
+                const loadedLabels = await loadExistingLabels(relPath);
+                boxes = loadedLabels;
+                annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+            } else {
+                boxes = [];
+            }
+            
             boxHistory = [];
             activeBoxIdx = -1;
             updateBoxList();
@@ -548,11 +600,57 @@ window.openExportModal = () => {
             // Manual navigation doesn't auto-detect anymore
         };
     }
+    
+    // Load existing labels from label directory
+    async function loadExistingLabels(relPath) {
+        if (!labelDir) return [];
+        
+        try {
+            const url = new URL('/api/annotate/labels', window.location.origin);
+            url.searchParams.set('rel_path', relPath);
+            url.searchParams.set('label_dir', labelDir);
+            
+            const res = await fetch(url.toString());
+            if (res.ok) {
+                const result = await res.json();
+                if (result.labels && result.labels.length > 0) {
+                    console.log(`[Labels] Loaded ${result.labels.length} boxes for ${relPath}`);
+                    return result.labels;
+                }
+            }
+        } catch (e) {
+            console.error('[Labels] Failed to load existing labels:', e);
+        }
+        return [];
+    }
 
-    function saveCurrent() {
+    async function saveCurrent() {
         if (total === 0) return;
         const relPath = images[currentIndex];
         annotations[relPath] = JSON.parse(JSON.stringify(boxes));
+        
+        // If label directory is set, save to file
+        if (labelDir) {
+            try {
+                const res = await fetch('/api/annotate/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        label_dir: labelDir,
+                        rel_path: relPath,
+                        boxes: boxes
+                    })
+                });
+                
+                if (res.ok) {
+                    console.log(`[Labels] Saved ${boxes.length} boxes for ${relPath}`);
+                } else {
+                    console.error('[Labels] Failed to save labels:', await res.text());
+                }
+            } catch (e) {
+                console.error('[Labels] Error saving labels:', e);
+            }
+        }
         
         if (saveBtn) {
             const originalText = saveBtn.textContent;
@@ -1000,12 +1098,10 @@ window.openExportModal = () => {
 
         if (e.key === 'd' || e.key === 'ArrowRight') {
             if (isBatchDetecting) return; // Disable during batch
-            saveCurrent();
-            loadIndex(currentIndex + 1);
+            saveCurrent().then(() => loadIndex(currentIndex + 1));
         } else if (e.key === 'a' || e.key === 'ArrowLeft') {
             if (isBatchDetecting) return; // Disable during batch
-            saveCurrent();
-            loadIndex(currentIndex - 1);
+            saveCurrent().then(() => loadIndex(currentIndex - 1));
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
             if (activeBoxIdx !== -1) {
                 pushHistory();
@@ -1021,9 +1117,9 @@ window.openExportModal = () => {
     });
 
     // --- Start ---
-    if (prevBtn) prevBtn.onclick = () => loadIndex(currentIndex - 1);
-    if (nextBtn) nextBtn.onclick = () => loadIndex(currentIndex + 1);
-    if (saveBtn) saveBtn.onclick = saveCurrent;
+    if (prevBtn) prevBtn.onclick = () => { saveCurrent().then(() => loadIndex(currentIndex - 1)); };
+    if (nextBtn) nextBtn.onclick = () => { saveCurrent().then(() => loadIndex(currentIndex + 1)); };
+    if (saveBtn) saveBtn.onclick = () => saveCurrent();
 
     init();
 })();
