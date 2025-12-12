@@ -173,10 +173,35 @@ def find_label_for_image(image_path: Path, label_root: Path) -> Optional[Tuple[s
             return filename_rel_str, label_rel.as_posix(), candidate
     return None
 
-def load_train_entries(train_file_path: Path, label_dir_path: Path) -> List[TxtEntry]:
+
+def auto_find_label_from_image_path(image_path: Path) -> Optional[Path]:
+    """
+    Automatically find label by replacing '/images/' with '/labels/' in path.
+    Example:
+      /path/to/megafallv2/images/train/image.jpg -> /path/to/megafallv2/labels/train/image.txt
+    """
+    path_str = str(image_path)
+    
+    # Replace '/images/' with '/labels/'
+    if '/images/' in path_str:
+        label_str = path_str.replace('/images/', '/labels/', 1)
+        # Change extension to .txt
+        label_path = Path(label_str).with_suffix(LABEL_EXT)
+        if label_path.exists():
+            return label_path
+    
+    return None
+
+def load_train_entries(train_file_path: Path, label_dir_path: Optional[Path] = None) -> List[TxtEntry]:
+    """
+    Load train entries from a train file.
+    
+    If label_dir_path is provided, looks for labels in that directory.
+    If label_dir_path is None, auto-maps by replacing '/images/' with '/labels/' in image path.
+    """
     train_file_path = train_file_path.resolve()
-    label_dir_path = label_dir_path.resolve()
-    cache_key = (str(train_file_path), str(label_dir_path))
+    label_dir_str = str(label_dir_path.resolve()) if label_dir_path else "auto"
+    cache_key = (str(train_file_path), label_dir_str)
     mtime = train_file_path.stat().st_mtime
     cached = _TXT_CACHE.get(cache_key)
     if cached and cached[0] == mtime:
@@ -194,10 +219,22 @@ def load_train_entries(train_file_path: Path, label_dir_path: Path) -> List[TxtE
                 continue
             if image_path_candidate.suffix.lower() not in IMAGE_EXTS:
                 continue
-            label_info = find_label_for_image(image_path_candidate, label_dir_path)
-            if not label_info:
-                continue
-            rel_path, label_rel, label_abs = label_info
+            
+            # Find label - auto mapping or from label_dir
+            if label_dir_path:
+                label_info = find_label_for_image(image_path_candidate, label_dir_path)
+                if not label_info:
+                    continue
+                rel_path, label_rel, label_abs = label_info
+            else:
+                # Auto mapping: /images/ -> /labels/
+                label_abs = auto_find_label_from_image_path(image_path_candidate)
+                if not label_abs:
+                    continue
+                # Use image filename as rel_path
+                rel_path = image_path_candidate.name
+                label_rel = label_abs.name
+            
             if rel_path in seen_rel_paths:
                 continue
             seen_rel_paths.add(rel_path)
@@ -214,10 +251,10 @@ def load_train_entries(train_file_path: Path, label_dir_path: Path) -> List[TxtE
     _TXT_CACHE[cache_key] = (mtime, entries, entries_by_rel)
     return entries
 
-def get_train_entry_by_rel(train_file_path: Path, label_dir_path: Path, rel_path: str) -> Optional[TxtEntry]:
+def get_train_entry_by_rel(train_file_path: Path, label_dir_path: Optional[Path], rel_path: str) -> Optional[TxtEntry]:
     train_file_path = train_file_path.resolve()
-    label_dir_path = label_dir_path.resolve()
-    cache_key = (str(train_file_path), str(label_dir_path))
+    label_dir_str = str(label_dir_path.resolve()) if label_dir_path else "auto"
+    cache_key = (str(train_file_path), label_dir_str)
     entries = load_train_entries(train_file_path, label_dir_path)
     cached = _TXT_CACHE.get(cache_key)
     if not cached:
@@ -369,14 +406,18 @@ def viewer(
     if label_dir:
         prefill["label_dir"] = label_dir
 
-    if not label_dir:
-        return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Label directory is required.", "prefill": prefill}, status_code=400)
-
-    label_dir_path = resolve_dataset_path(label_dir)
-    if not label_dir_path.exists():
-        return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": f"Invalid label directory: {label_dir}", "prefill": prefill}, status_code=400)
+    # Resolve label_dir if provided
+    label_dir_path = None
+    if label_dir:
+        label_dir_path = resolve_dataset_path(label_dir)
+        if not label_dir_path.exists():
+            return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": f"Invalid label directory: {label_dir}", "prefill": prefill}, status_code=400)
 
     if mode == "folder":
+        # Folder mode requires label_dir
+        if not label_dir:
+            return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Label directory is required for folder mode.", "prefill": prefill}, status_code=400)
+        
         prefill["img_dir"] = img_dir
         if not img_dir:
             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Image directory required", "prefill": prefill}, status_code=400)
@@ -396,7 +437,7 @@ def viewer(
             "label_dir": str(label_dir_path.resolve()),
             "train_file": None,
         }
-    else: # txt
+    else: # txt mode - supports auto label mapping
         prefill["train_file"] = train_file
         if not train_file:
             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Train file required", "prefill": prefill}, status_code=400)
@@ -405,15 +446,19 @@ def viewer(
         if not train_file_path.exists():
              return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": f"Invalid train file: {train_file}", "prefill": prefill}, status_code=400)
 
+        # Load entries - if label_dir is None, uses auto-mapping (images/ -> labels/)
         entries = load_train_entries(train_file_path, label_dir_path)
         if not entries:
-             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "No valid entries in train file", "prefill": prefill}, status_code=400)
+             error_msg = "No valid entries in train file"
+             if not label_dir:
+                 error_msg += " (auto-mapping: /images/ -> /labels/)"
+             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": error_msg, "prefill": prefill}, status_code=400)
 
         data = {
             "mode": mode,
-            "images": [{"rel_path": entry.rel_path, "label_rel": entry.label_rel} for entry in entries],
+            "images": [{"rel_path": entry.rel_path, "label_rel": entry.label_rel, "image_path": str(entry.image_path), "label_path": str(entry.label_path)} for entry in entries],
             "img_dir": None,
-            "label_dir": str(label_dir_path.resolve()),
+            "label_dir": str(label_dir_path.resolve()) if label_dir_path else "auto",
             "train_file": str(train_file_path.resolve()),
         }
 
@@ -426,6 +471,7 @@ def get_image(
     img_dir: Optional[str] = Query(None),
     train_file: Optional[str] = Query(None),
     label_dir: Optional[str] = Query(None),
+    image_path_direct: Optional[str] = Query(None),  # Direct image path for auto-mapping mode
 ):
     mode = (mode or "folder").lower()
     try:
@@ -436,9 +482,15 @@ def get_image(
             if img_path.exists():
                 return FileResponse(img_path)
         else:
+            # txt mode - try direct path first (for auto-mapping mode)
+            if image_path_direct:
+                direct_path = Path(image_path_direct)
+                if direct_path.exists():
+                    return FileResponse(direct_path)
+            
             if not train_file: raise HTTPException(400, "Train file required")
             train_file_path = resolve_dataset_path(train_file)
-            label_dir_path = resolve_dataset_path(label_dir) if label_dir else None
+            label_dir_path = resolve_dataset_path(label_dir) if label_dir and label_dir != "auto" else None
             entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
             if entry and entry.image_path.is_file():
                 return FileResponse(entry.image_path)
@@ -460,6 +512,7 @@ def get_labels(
     img_dir: Optional[str] = Query(None),
     label_dir: Optional[str] = Query(None),
     train_file: Optional[str] = Query(None),
+    label_path_direct: Optional[str] = Query(None),  # Direct label path for auto-mapping mode
 ):
     mode = (mode or "folder").lower()
     label_path = None
@@ -470,12 +523,16 @@ def get_labels(
         label_rel = Path(rel_path).with_suffix(LABEL_EXT)
         label_path = label_dir_path / label_rel
     else:
-        if not train_file: raise HTTPException(400, "Train file required")
-        train_file_path = resolve_dataset_path(train_file)
-        label_dir_path = resolve_dataset_path(label_dir)
-        entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
-        if entry:
-            label_path = entry.label_path
+        # txt mode
+        if label_path_direct:
+            # Direct label path provided (for auto-mapping mode)
+            label_path = Path(label_path_direct)
+        elif train_file:
+            train_file_path = resolve_dataset_path(train_file)
+            label_dir_path = resolve_dataset_path(label_dir) if label_dir and label_dir != "auto" else None
+            entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
+            if entry:
+                label_path = entry.label_path
 
     labels = []
     if label_path and label_path.exists():
@@ -686,7 +743,7 @@ def scan_progress(
         # (Simplified for brevity - using same logic as before but ensuring no syntax errors)
         if mode == "folder":
             if not img_dir or not label_dir:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing args'})}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing args for folder mode'})}\n\n"
                 return
             img_path = resolve_dataset_path(img_dir)
             lbl_path = resolve_dataset_path(label_dir)
@@ -695,25 +752,33 @@ def scan_progress(
                 return
             images = list_images(img_path, lbl_path)
         else:
+            # txt mode - label_dir is optional (auto-mapping)
             if not train_file:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Missing train file'})}\n\n"
                 return
             tf_path = resolve_dataset_path(train_file)
-            ld_path = resolve_dataset_path(label_dir)
+            ld_path = resolve_dataset_path(label_dir) if label_dir else None
             entries = load_train_entries(tf_path, ld_path)
             images = [e.rel_path for e in entries]
 
         total = len(images)
         if total == 0:
-            yield f"data: {json.dumps({'status': 'error', 'message': 'No images found'})}\n\n"
+            error_msg = 'No images found'
+            if mode == 'txt' and not label_dir:
+                error_msg += ' (auto-mapping: /images/ → /labels/)'
+            yield f"data: {json.dumps({'status': 'error', 'message': error_msg})}\n\n"
             return
 
         # Fast progress simulation since list is already loaded
         yield f"data: {json.dumps({'status': 'progress', 'progress': 100, 'eta': 0})}\n\n"
 
-        params = [("mode", mode), ("label_dir", label_dir)]
-        if mode == "folder": params.append(("img_dir", img_dir))
-        else: params.append(("train_file", train_file))
+        params = [("mode", mode)]
+        if label_dir:
+            params.append(("label_dir", label_dir))
+        if mode == "folder": 
+            params.append(("img_dir", img_dir))
+        else: 
+            params.append(("train_file", train_file))
         
         q = "&".join(f"{k}={quote(v, safe='')}" for k, v in params if v)
         yield f"data: {json.dumps({'status': 'done', 'viewer_url': f'/viewer?{q}'})}\n\n"

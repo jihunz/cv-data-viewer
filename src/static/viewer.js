@@ -67,7 +67,11 @@
     metaParts.push(`Images: ${data.img_dir}`);
   }
   if (data.label_dir) {
-    metaParts.push(`Labels: ${data.label_dir}`);
+    if (data.label_dir === 'auto') {
+      metaParts.push(`Labels: Auto (/images/ → /labels/)`);
+    } else {
+      metaParts.push(`Labels: ${data.label_dir}`);
+    }
   }
     
     if (pathsEl) {
@@ -188,13 +192,19 @@
     return val ? new Set([Number(val)]) : null;
   }
 
-  async function fetchLabels(relPath) {
+  async function fetchLabels(relPath, entry) {
     const url = new URL('/api/labels', window.location.origin);
     url.searchParams.set('mode', mode);
     url.searchParams.set('rel_path', relPath);
-    if (data.label_dir) url.searchParams.set('label_dir', data.label_dir);
+    if (data.label_dir && data.label_dir !== 'auto') url.searchParams.set('label_dir', data.label_dir);
     if (mode === 'folder' && data.img_dir) url.searchParams.set('img_dir', data.img_dir);
-    else if (mode === 'txt' && data.train_file) url.searchParams.set('train_file', data.train_file);
+    else if (mode === 'txt') {
+      if (data.train_file) url.searchParams.set('train_file', data.train_file);
+      // For auto-mapping mode, pass direct label path if available
+      if (entry && entry.label_path) {
+        url.searchParams.set('label_path_direct', entry.label_path);
+      }
+    }
 
     const res = await fetch(url);
     if (!res.ok) throw new Error('No labels');
@@ -305,9 +315,11 @@
     imgUrl.searchParams.set('mode', mode);
     imgUrl.searchParams.set('rel_path', entry.rel_path);
     if (mode === 'folder' && data.img_dir) imgUrl.searchParams.set('img_dir', data.img_dir);
-    else if (mode === 'txt' && data.train_file) {
-      imgUrl.searchParams.set('train_file', data.train_file);
-      if (data.label_dir) imgUrl.searchParams.set('label_dir', data.label_dir);
+    else if (mode === 'txt') {
+      if (data.train_file) imgUrl.searchParams.set('train_file', data.train_file);
+      if (data.label_dir && data.label_dir !== 'auto') imgUrl.searchParams.set('label_dir', data.label_dir);
+      // For auto-mapping mode, pass direct image path if available
+      if (entry.image_path) imgUrl.searchParams.set('image_path_direct', entry.image_path);
     }
     img.src = imgUrl.toString();
 
@@ -330,7 +342,7 @@
       canvas.width = img.clientWidth;
       canvas.height = img.clientHeight;
       
-      fetchLabels(entry.rel_path)
+      fetchLabels(entry.rel_path, entry)
         .then(data => {
           // Attach raw labels to wrapper for exclusion export logic if needed
           wrapper.dataset.labelPath = data.label; 
@@ -398,9 +410,10 @@
           url.searchParams.set('mode', mode);
           url.searchParams.set('rel_path', entry.rel_path);
           if (mode === 'folder' && data.img_dir) url.searchParams.set('img_dir', data.img_dir);
-          else if (mode === 'txt' && data.train_file) {
-            url.searchParams.set('train_file', data.train_file);
-            if (data.label_dir) url.searchParams.set('label_dir', data.label_dir);
+          else if (mode === 'txt') {
+            if (data.train_file) url.searchParams.set('train_file', data.train_file);
+            if (data.label_dir && data.label_dir !== 'auto') url.searchParams.set('label_dir', data.label_dir);
+            if (entry.image_path) url.searchParams.set('image_path_direct', entry.image_path);
           }
           img.src = url.toString();
       });

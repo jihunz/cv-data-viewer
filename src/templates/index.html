@@ -83,6 +83,14 @@
                     <input id="train-file-input" type="text" name="train_file" placeholder="/path/to/train.txt" value="{{ prefill.train_file if prefill else '' }}" />
                 </div>
 
+                <div class="mode-field" data-mode="txt-label-dir">
+                    <label for="txt-label-dir-input" class="input-label">
+                        <span class="label-title">라벨 디렉터리 (선택)</span>
+                        <span class="label-hint">비워두면 경로에서 /images/ → /labels/ 자동 변환</span>
+                    </label>
+                    <input id="txt-label-dir-input" type="text" name="txt_label_dir" placeholder="자동 매핑: /images/ → /labels/" value="" />
+                </div>
+
                 <div class="mode-field" data-mode="shared">
                     <label for="label-dir-input" class="input-label">
                         <span class="label-title">라벨 디렉터리</span>
@@ -122,10 +130,12 @@
         const modeRadios = Array.from(form.querySelectorAll('input[name="mode"]'));
         const folderFields = form.querySelectorAll('.mode-field[data-mode="folder"]');
         const txtField = form.querySelector('.mode-field[data-mode="txt"]');
+        const txtLabelDirField = form.querySelector('.mode-field[data-mode="txt-label-dir"]');
         const annotateLabelField = form.querySelector('.mode-field[data-mode="annotate-label"]');
         const imgDirInput = form.querySelector('input[name="img_dir"]');
         const trainFileInput = form.querySelector('input[name="train_file"]');
         const labelDirInput = form.querySelector('input[name="label_dir"]');
+        const txtLabelDirInput = form.querySelector('input[name="txt_label_dir"]');
         const annotateLabelDirInput = form.querySelector('input[name="annotate_label_dir"]');
         let eventSource;
 
@@ -153,15 +163,21 @@
 
         function applyMode(mode) {
             if (mode === 'txt') {
+                // txt mode: train.txt + optional label dir (auto-mapping if empty)
                 folderFields.forEach(el => el.classList.add('hidden'));
                 txtField.classList.remove('hidden');
+                if (txtLabelDirField) txtLabelDirField.classList.remove('hidden');
                 if (annotateLabelField) annotateLabelField.classList.add('hidden');
+                const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
+                if (sharedLabelField) sharedLabelField.classList.add('hidden');
+                
                 imgDirInput.disabled = true;
                 imgDirInput.required = false;
                 labelDirInput.disabled = true;
                 labelDirInput.required = false;
                 trainFileInput.disabled = false;
                 trainFileInput.required = true;
+                if (txtLabelDirInput) txtLabelDirInput.disabled = false;
                 if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
             } else if (mode === 'annotate') {
                 // Annotate mode: Show image dir + optional label dir
@@ -174,6 +190,8 @@
                         imgDirInput.required = true;
                     }
                 });
+                txtField.classList.add('hidden');
+                if (txtLabelDirField) txtLabelDirField.classList.add('hidden');
                 const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
                 if (sharedLabelField) sharedLabelField.classList.add('hidden');
                 
@@ -184,23 +202,25 @@
                 labelDirInput.disabled = true;
                 labelDirInput.required = false;
                 
-                txtField.classList.add('hidden');
                 trainFileInput.disabled = true;
                 trainFileInput.required = false;
+                if (txtLabelDirInput) txtLabelDirInput.disabled = true;
             } else {
                 // Folder mode
                 folderFields.forEach(el => el.classList.remove('hidden'));
                 const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
                 if (sharedLabelField) sharedLabelField.classList.remove('hidden');
+                txtField.classList.add('hidden');
+                if (txtLabelDirField) txtLabelDirField.classList.add('hidden');
                 if (annotateLabelField) annotateLabelField.classList.add('hidden');
 
-                txtField.classList.add('hidden');
                 imgDirInput.disabled = false;
                 imgDirInput.required = true;
                 labelDirInput.disabled = false;
                 labelDirInput.required = true;
                 trainFileInput.disabled = true;
                 trainFileInput.required = false;
+                if (txtLabelDirInput) txtLabelDirInput.disabled = true;
                 if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
             }
         }
@@ -220,16 +240,11 @@
             const imgDir = imgDirInput.value.trim();
             const trainFile = trainFileInput.value.trim();
             const labelDir = labelDirInput.value.trim();
-
-            // Check label dir ONLY if not annotate mode
-            if (mode !== 'annotate' && !labelDir) {
-                showToast('Label directory is required', 'error');
-                return;
-            }
+            const txtLabelDir = txtLabelDirInput ? txtLabelDirInput.value.trim() : '';
             
             if (mode === 'folder') {
                 if (!imgDir) {
-                showToast('Image directory is required for folder mode', 'error');
+                    showToast('Image directory is required for folder mode', 'error');
                     return;
                 }
                 if (!labelDir) {
@@ -263,11 +278,16 @@
 
             const params = new URLSearchParams();
             params.set('mode', mode);
-            params.set('label_dir', labelDir);
+            
             if (mode === 'folder') {
                 params.set('img_dir', imgDir);
+                params.set('label_dir', labelDir);
             } else {
+                // txt mode: label_dir is optional (auto-mapping if empty)
                 params.set('train_file', trainFile);
+                if (txtLabelDir) {
+                    params.set('label_dir', txtLabelDir);
+                }
             }
             eventSource = new EventSource(`/api/progress?${params.toString()}`);
 
