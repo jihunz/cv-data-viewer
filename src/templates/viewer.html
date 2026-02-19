@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CV Data Viewer</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=4" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
@@ -58,13 +58,35 @@
             </select>
         </div>
 
-        <div class="control-group">
+        <div class="control-group" id="exclude-group">
             <button id="exclude-btn" class="btn danger">
                 <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 Exclude Selected (<span id="selected-count">0</span>)
             </button>
             <button id="export-btn" class="btn">
                 Export List
+            </button>
+        </div>
+
+        <div class="control-group hidden" id="compare-controls">
+            <button id="toggle-gt" class="btn compare-toggle active" data-layer="gt">
+                <span class="legend-dot gt-dot"></span>
+                GT
+            </button>
+            <button id="toggle-pred-a" class="btn compare-toggle active" data-layer="pred-a">
+                <span class="legend-dot pred-a-dot"></span>
+                <span id="label-a-text">A</span>
+            </button>
+            <button id="toggle-pred-b" class="btn compare-toggle active hidden" data-layer="pred-b">
+                <span class="legend-dot pred-b-dot"></span>
+                <span id="label-b-text">B</span>
+            </button>
+            <select id="compare-class-filter" class="btn" style="padding-right: 2rem;">
+                <option value="">All Classes</option>
+            </select>
+            <button id="copy-btn" class="btn">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                Copy
             </button>
         </div>
     </footer>

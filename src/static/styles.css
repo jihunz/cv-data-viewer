@@ -99,8 +99,8 @@ body {
 
 .mode-options {
     display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
   background: #111;
   padding: 0.25rem;
   border-radius: 10px;
@@ -533,4 +533,135 @@ input[type="text"]:focus {
 
 .toast-btn:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* --- Compare Mode --- */
+.viewer-grid.compare-side-by-side {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.compare-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.compare-top-bar {
+  height: 38px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: 0.05em;
+}
+
+.compare-top-bar.side-a {
+  background: #1e40af;
+  color: #bfdbfe;
+}
+
+.compare-top-bar.side-b {
+  background: #9a3412;
+  color: #fed7aa;
+}
+
+.compare-img-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compare-img-wrap .grid-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.compare-img-wrap .grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.compare-bottom-bar {
+  height: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: #1a1a2e;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.compare-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  animation: none;
+}
+
+.compare-toggle:not(.active) {
+  opacity: 0.4;
+  border-color: var(--border);
+  animation: none;
+}
+
+.compare-toggle.active[data-layer="gt"] {
+  border-color: #10b981;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  animation: none;
+}
+
+.compare-toggle.active[data-layer="pred-a"] {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  animation: none;
+}
+
+.compare-toggle.active[data-layer="pred-b"] {
+  border-color: #f97316;
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.1);
+  animation: none;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.gt-dot { background: #10b981; }
+.pred-a-dot { background: #3b82f6; }
+.pred-b-dot { background: #f97316; }
+
+/* --- Compare Quick Select (Landing) --- */
+.compare-select {
+  width: 100%;
+  background-color: #0f1115;
+  border: 1px solid var(--border);
+  color: white;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.compare-select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
