@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CV Data Viewer</title>
-    <link rel="stylesheet" href="/static/styles.css?v=4" />
+    <link rel="stylesheet" href="/static/styles.css?v=5" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
@@ -20,6 +20,13 @@
             <div class="info-chip counter-wrapper">
                 <input type="text" id="counter-input" class="counter-input" value="0 - 0 / 0" />
             </div>
+            <button id="mark-btn" class="btn mark-btn" title="Mark current image (M)">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+            </button>
+            <button id="marks-toggle-btn" class="btn" title="Show marked images">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                <span id="marks-badge">0</span>
+            </button>
             </div>
         </header>
 
@@ -90,6 +97,15 @@
             </button>
         </div>
     </footer>
+
+    <!-- Marks Panel -->
+    <div id="marks-panel" class="marks-panel hidden">
+        <div class="marks-header">
+            <span>Marked Images (<span id="marks-count">0</span>)</span>
+            <button id="marks-close" class="marks-close-btn">&times;</button>
+        </div>
+        <div id="marks-list" class="marks-list"></div>
+    </div>
 
     <div id="toast" class="toast hidden"></div>
 

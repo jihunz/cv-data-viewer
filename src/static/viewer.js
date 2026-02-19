@@ -63,6 +63,17 @@
   const labelBText = document.getElementById('label-b-text');
   const compareClassFilter = document.getElementById('compare-class-filter');
   const copyBtn = document.getElementById('copy-btn');
+  const markBtn = document.getElementById('mark-btn');
+  const marksToggleBtn = document.getElementById('marks-toggle-btn');
+  const marksPanel = document.getElementById('marks-panel');
+  const marksList = document.getElementById('marks-list');
+  const marksCount = document.getElementById('marks-count');
+  const marksBadge = document.getElementById('marks-badge');
+  const marksCloseBtn = document.getElementById('marks-close');
+
+  const markedSet = new Set();
+  let marksOnlyMode = false;
+  let marksOnlyList = [];
 
   let toastTimeout = null;
 
@@ -342,6 +353,7 @@
         excludeBtn.style.opacity = selectedSet.size > 0 ? '1' : '0.5';
         excludeBtn.style.cursor = selectedSet.size > 0 ? 'pointer' : 'not-allowed';
     }
+    updateMarkUI();
   }
 
   function jumpToIndex(val) {
@@ -909,7 +921,70 @@
     showToast('Exported exclusion list');
   }
 
+  // -- Marking --
+  function toggleMark() {
+    const idx = currentIndex;
+    if (markedSet.has(idx)) {
+      markedSet.delete(idx);
+      showToast(`Unmarked #${idx + 1}`);
+    } else {
+      markedSet.add(idx);
+      showToast(`Marked #${idx + 1}`);
+    }
+    updateMarkUI();
+  }
+
+  function updateMarkUI() {
+    const count = markedSet.size;
+    if (marksBadge) marksBadge.textContent = count;
+    if (marksCount) marksCount.textContent = count;
+    if (markBtn) {
+      markBtn.classList.toggle('marked', markedSet.has(currentIndex));
+    }
+  }
+
+  function renderMarksList() {
+    if (!marksList) return;
+    marksList.innerHTML = '';
+    if (markedSet.size === 0) {
+      marksList.innerHTML = '<div style="padding:12px;color:var(--text-secondary);text-align:center;">No marked images</div>';
+      return;
+    }
+    const sorted = Array.from(markedSet).sort((a, b) => a - b);
+    sorted.forEach(idx => {
+      const entry = images[idx];
+      if (!entry) return;
+      const item = document.createElement('div');
+      item.className = 'marks-item';
+      if (idx === currentIndex) item.classList.add('active');
+      item.innerHTML = `<span class="marks-item-num">#${idx + 1}</span><span class="marks-item-name">${entry.rel_path}</span><button class="marks-item-remove" data-idx="${idx}">&times;</button>`;
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('marks-item-remove')) {
+          markedSet.delete(parseInt(e.target.dataset.idx));
+          updateMarkUI();
+          renderMarksList();
+          return;
+        }
+        currentIndex = idx;
+        selectedSet.clear();
+        renderGrid();
+        updateMarkUI();
+        renderMarksList();
+      });
+      marksList.appendChild(item);
+    });
+  }
+
+  function toggleMarksPanel() {
+    if (!marksPanel) return;
+    const isHidden = marksPanel.classList.toggle('hidden');
+    if (!isHidden) renderMarksList();
+  }
+
   // -- Event Listeners --
+  if (markBtn) markBtn.addEventListener('click', toggleMark);
+  if (marksToggleBtn) marksToggleBtn.addEventListener('click', toggleMarksPanel);
+  if (marksCloseBtn) marksCloseBtn.addEventListener('click', () => marksPanel.classList.add('hidden'));
   if (firstBtn) firstBtn.addEventListener('click', goToFirst);
   if (lastBtn) lastBtn.addEventListener('click', goToLast);
   prevBtn.addEventListener('click', () => { stopAuto(); prevBatch(); });
@@ -944,6 +1019,11 @@
   // Keyboard Navigation
   document.addEventListener('keydown', (ev) => {
     if (document.activeElement === searchInput || document.activeElement === counterInput) return;
+
+    if (ev.key === 'm' || ev.key === 'M') {
+      toggleMark();
+      return;
+    }
 
     if (isCompareMode && ev.key === 'c' && (ev.ctrlKey || ev.metaKey)) {
       ev.preventDefault();

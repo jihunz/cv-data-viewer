@@ -665,3 +665,122 @@ input[type="text"]:focus {
   outline: none;
   border-color: var(--accent);
 }
+
+/* --- Mark / Bookmark --- */
+.mark-btn {
+  padding: 0 0.75rem;
+}
+
+.mark-btn.marked svg {
+  fill: #f59e0b;
+  stroke: #f59e0b;
+}
+
+#marks-badge {
+  background: var(--accent);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.marks-panel {
+  position: fixed;
+  top: 50px;
+  right: 0;
+  width: 320px;
+  max-height: calc(100vh - 120px);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.marks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.marks-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.marks-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.marks-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.marks-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  transition: background 0.15s;
+}
+
+.marks-item:hover {
+  background: var(--bg-hover);
+}
+
+.marks-item.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-left: 3px solid var(--accent);
+}
+
+.marks-item-num {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--accent);
+  min-width: 40px;
+}
+
+.marks-item-name {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marks-item-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.marks-item:hover .marks-item-remove {
+  opacity: 1;
+}
+
+.marks-item-remove:hover {
+  color: var(--danger);
+}
