@@ -6,8 +6,6 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-      - /Users/jihunjang/Downloads/ust/dataset:/datasets/ust/dataset:ro
-      - /Users/jihunjang/Downloads/kisa-2:/datasets/kisa-2:ro
-      - /Users/jihunjang/workspace/ust/fall-detection:/datasets/fall-detection:ro
+      - /Users/jihunjang:/host:ro
     environment:
       - PYTHONPATH=/app

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import time
 import zipfile
 from dataclasses import dataclass
@@ -56,12 +57,11 @@ def get_yolo_model(model_name: str = "yolo12x"):
         raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
 
 # --- Data Roots (Modified for user env) ---
-HOST_DATA_ROOT = Path("/Users/jihunjang/Downloads")
-CONTAINER_DATA_ROOT = Path("/datasets")
+HOST_HOME = "/Users/jihunjang"
+CONTAINER_MOUNT = "/host"
 
 PATH_MAPPINGS: List[Tuple[str, str]] = [
-    ("/Users/jihunjang/Downloads", "/datasets"),
-    ("/Users/jihunjang/workspace/ust/fall-detection", "/datasets/fall-detection"),
+    (HOST_HOME, CONTAINER_MOUNT),
 ]
 
 # --- App Init ---
@@ -78,6 +78,24 @@ async def startup_event():
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 LABEL_EXT = ".txt"
 DATASET_MODES = {"folder", "txt", "annotate", "compare"}
+
+_HASH_RE = re.compile(r'_[0-9a-fA-F]{8}_')
+
+def _normalize_stem(stem: str) -> str:
+    return _HASH_RE.sub('_', stem)
+
+def _find_fuzzy_label(label_dir: Path, img_rel: Path) -> Optional[Path]:
+    exact = label_dir / img_rel.with_suffix(LABEL_EXT)
+    if exact.is_file():
+        return exact
+    parent = label_dir / img_rel.parent
+    if not parent.is_dir():
+        parent = label_dir
+    target_key = _normalize_stem(img_rel.stem)
+    for lbl in parent.iterdir():
+        if lbl.suffix == LABEL_EXT and _normalize_stem(lbl.stem) == target_key:
+            return lbl
+    return None
 
 # --- Cache & Helper Classes ---
 @dataclass(frozen=True)
@@ -249,26 +267,29 @@ def get_train_entry_by_rel(train_file_path: Path, label_dir_path: Optional[Path]
     return mapping.get(rel_path)
 
 def list_images(img_dir: Path, label_dir: Path) -> List[str]:
-    images: List[str] = []
-    # Only scan depth 1 and direct subdirs
-    if not img_dir.exists(): 
+    if not img_dir.exists():
         return []
-        
-    depth_one = sorted(p for p in img_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
-    depth_dirs = sorted(p for p in img_dir.iterdir() if p.is_dir())
 
-    for img_path in depth_one:
+    all_imgs: List[Path] = []
+    depth_one = sorted(p for p in img_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+    all_imgs.extend(depth_one)
+    for subdir in sorted(p for p in img_dir.iterdir() if p.is_dir()):
+        all_imgs.extend(sorted(p for p in subdir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS))
+
+    # 1단계: 정확 매칭
+    images: List[str] = []
+    for img_path in all_imgs:
         rel = img_path.relative_to(img_dir)
         if (label_dir / rel.with_suffix(LABEL_EXT)).is_file():
             images.append(str(rel))
+    if images:
+        return images
 
-    for subdir in depth_dirs:
-        sub_images = [p for p in sorted(subdir.iterdir()) if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
-        for img_path in sub_images:
-            rel = img_path.relative_to(img_dir)
-            if (label_dir / rel.with_suffix(LABEL_EXT)).is_file():
-                images.append(str(rel))
-
+    # 2단계: 퍼지 매칭 (해시 제거 후 비교)
+    for img_path in all_imgs:
+        rel = img_path.relative_to(img_dir)
+        if _find_fuzzy_label(label_dir, rel):
+            images.append(str(rel))
     return images
 
 def collect_images(img_dir: Path, label_dir: Path) -> List[str]:
@@ -565,8 +586,7 @@ def get_labels(
     if mode == "folder":
         if not label_dir: raise HTTPException(400, "Label dir required for folder mode")
         label_dir_path = resolve_dataset_path(label_dir)
-        label_rel = Path(rel_path).with_suffix(LABEL_EXT)
-        label_path = label_dir_path / label_rel
+        label_path = _find_fuzzy_label(label_dir_path, Path(rel_path))
     else:
         if not train_file: raise HTTPException(400, "Train file required")
         train_file_path = resolve_dataset_path(train_file)
