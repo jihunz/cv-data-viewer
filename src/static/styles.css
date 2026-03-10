@@ -184,6 +184,135 @@ input[type="text"]:focus {
   border-color: var(--accent);
 }
 
+.input-with-browse {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-browse input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-btn {
+  white-space: nowrap;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.browse-btn:hover {
+  border-color: var(--accent);
+  background: rgba(255,255,255,0.05);
+}
+
+/* File Browser Modal */
+.browse-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+}
+
+.browse-modal.hidden { display: none; }
+
+.browse-modal-content {
+  width: 90%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+}
+
+.browse-header {
+  margin-bottom: 1rem;
+}
+
+.browse-header h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.4rem;
+}
+
+.browse-path {
+  font-size: 0.8rem;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.browse-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0f1115;
+  min-height: 200px;
+  max-height: 50vh;
+}
+
+.browse-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.15s;
+}
+
+.browse-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.browse-dir { color: var(--text-primary); }
+.browse-up { color: var(--text-secondary); }
+.browse-file { color: var(--text-secondary); font-size: 0.85rem; }
+
+.browse-loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.browse-footer {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.browse-footer .primary-btn {
+  flex: 1;
+}
+
+.browse-cancel-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.browse-cancel-btn:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
 .primary-btn {
   width: 100%;
   padding: 1rem;

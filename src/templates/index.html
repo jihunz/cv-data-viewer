@@ -4,11 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MegaFall Viewer</title>
-    <link rel="stylesheet" href="/static/styles.css?v=5" />
+    <link rel="stylesheet" href="/static/styles.css?v=6" />
 </head>
 <body class="index-body">
     {% set current_mode = prefill.mode if prefill and prefill.mode else 'folder' %}
     <div id="toast" class="toast hidden"></div>
+    <div id="browse-modal" class="browse-modal hidden">
+        <div class="browse-modal-content glass-card">
+            <header class="browse-header">
+                <h3>파일 탐색기</h3>
+                <span id="browse-current-path" class="browse-path"></span>
+            </header>
+            <div id="browse-list" class="browse-list"></div>
+            <footer class="browse-footer">
+                <button type="button" id="browse-select-btn" class="primary-btn">이 폴더 선택</button>
+                <button type="button" id="browse-cancel-btn" class="browse-cancel-btn">취소</button>
+            </footer>
+        </div>
+    </div>
     <div id="loading-overlay" class="loading hidden">
         <div class="loading-card">
             <div class="loading-spinner"></div>
@@ -75,7 +88,10 @@
                         <span class="label-title">이미지 디렉터리</span>
                         <span class="label-hint">예: /datasets/images</span>
                     </label>
-                    <input id="img-dir-input" type="text" name="img_dir" placeholder="/path/to/images" value="{{ prefill.img_dir if prefill else '' }}" />
+                    <div class="input-with-browse">
+                        <input id="img-dir-input" type="text" name="img_dir" placeholder="/path/to/images" value="{{ prefill.img_dir if prefill else '' }}" />
+                        <button type="button" class="browse-btn" data-target="img-dir-input">Browse</button>
+                    </div>
                 </div>
 
                 <div class="mode-field" data-mode="txt">
@@ -83,7 +99,10 @@
                         <span class="label-title">train.txt 파일</span>
                         <span class="label-hint">학습 이미지 경로 리스트</span>
                     </label>
-                    <input id="train-file-input" type="text" name="train_file" placeholder="/path/to/train.txt" value="{{ prefill.train_file if prefill else '' }}" />
+                    <div class="input-with-browse">
+                        <input id="train-file-input" type="text" name="train_file" placeholder="/path/to/train.txt" value="{{ prefill.train_file if prefill else '' }}" />
+                        <button type="button" class="browse-btn" data-target="train-file-input" data-show-files="true">Browse</button>
+                    </div>
                 </div>
 
                 <div class="mode-field" data-mode="shared">
@@ -91,7 +110,10 @@
                         <span class="label-title">라벨 디렉터리</span>
                         <span class="label-hint">YOLO 포맷, 이미지와 동일 구조</span>
                     </label>
-                    <input id="label-dir-input" type="text" name="label_dir" placeholder="/path/to/labels" value="{{ prefill.label_dir if prefill else '' }}" />
+                    <div class="input-with-browse">
+                        <input id="label-dir-input" type="text" name="label_dir" placeholder="/path/to/labels" value="{{ prefill.label_dir if prefill else '' }}" />
+                        <button type="button" class="browse-btn" data-target="label-dir-input">Browse</button>
+                    </div>
                 </div>
 
                 <div class="mode-field hidden" data-mode="annotate-label">
@@ -99,7 +121,10 @@
                         <span class="label-title">라벨 디렉터리 (선택)</span>
                         <span class="label-hint">기존 라벨이 있으면 로드하여 수정</span>
                     </label>
-                    <input id="annotate-label-dir-input" type="text" name="annotate_label_dir" placeholder="/path/to/labels (선택 사항)" value="" />
+                    <div class="input-with-browse">
+                        <input id="annotate-label-dir-input" type="text" name="annotate_label_dir" placeholder="/path/to/labels (선택 사항)" value="" />
+                        <button type="button" class="browse-btn" data-target="annotate-label-dir-input">Browse</button>
+                    </div>
                 </div>
 
                 <div class="mode-field hidden" data-mode="compare-quick">
@@ -436,6 +461,86 @@
                 progressBar.style.width = '100%';
                 percentText.textContent = '100%';
             }
+        });
+
+        // --- File Browser Modal ---
+        const browseModal = document.getElementById('browse-modal');
+        const browseList = document.getElementById('browse-list');
+        const browseCurrentPath = document.getElementById('browse-current-path');
+        const browseSelectBtn = document.getElementById('browse-select-btn');
+        const browseCancelBtn = document.getElementById('browse-cancel-btn');
+        let browseTargetInput = null;
+        let browseCurrentDir = '';
+        let browseShowFiles = false;
+
+        async function loadBrowse(dirPath) {
+            browseList.innerHTML = '<div class="browse-loading">Loading...</div>';
+            try {
+                const res = await fetch(`/api/browse?path=${encodeURIComponent(dirPath)}`);
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                const data = await res.json();
+                browseCurrentDir = data.current;
+                browseCurrentPath.textContent = data.current;
+                browseList.innerHTML = '';
+
+                if (data.parent) {
+                    const upEl = document.createElement('div');
+                    upEl.className = 'browse-item browse-dir browse-up';
+                    upEl.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg> ..';
+                    upEl.addEventListener('click', () => loadBrowse(data.parent));
+                    browseList.appendChild(upEl);
+                }
+
+                for (const dir of data.dirs) {
+                    const el = document.createElement('div');
+                    el.className = 'browse-item browse-dir';
+                    el.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg> ${dir}`;
+                    el.addEventListener('click', () => loadBrowse(browseCurrentDir + '/' + dir));
+                    browseList.appendChild(el);
+                }
+
+                if (browseShowFiles) {
+                    for (const file of data.files) {
+                        const el = document.createElement('div');
+                        el.className = 'browse-item browse-file';
+                        el.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> ${file}`;
+                        el.addEventListener('click', () => {
+                            browseTargetInput.value = browseCurrentDir + '/' + file;
+                            browseModal.classList.add('hidden');
+                        });
+                        browseList.appendChild(el);
+                    }
+                }
+            } catch (e) {
+                browseList.innerHTML = `<div class="browse-loading" style="color:var(--danger)">Error: ${e.message}</div>`;
+            }
+        }
+
+        document.querySelectorAll('.browse-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.dataset.target;
+                browseTargetInput = document.getElementById(targetId);
+                browseShowFiles = btn.dataset.showFiles === 'true';
+                browseSelectBtn.textContent = browseShowFiles ? '이 폴더 선택' : '이 폴더 선택';
+                const startPath = browseTargetInput.value.trim() || '/host';
+                browseModal.classList.remove('hidden');
+                loadBrowse(startPath);
+            });
+        });
+
+        browseSelectBtn.addEventListener('click', () => {
+            if (browseTargetInput && browseCurrentDir) {
+                browseTargetInput.value = browseCurrentDir;
+            }
+            browseModal.classList.add('hidden');
+        });
+
+        browseCancelBtn.addEventListener('click', () => {
+            browseModal.classList.add('hidden');
+        });
+
+        browseModal.addEventListener('click', (e) => {
+            if (e.target === browseModal) browseModal.classList.add('hidden');
         });
     </script>
 </body>

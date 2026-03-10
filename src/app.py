@@ -851,6 +851,37 @@ def scan_metrics(base_dir: str = Query(...)):
     return JSONResponse({"experiments": experiments, "base_dir": str(base_path)})
 
 
+@app.get("/api/browse")
+def browse_directory(path: str = Query("~")):
+    """List directories and files for the file browser."""
+    try:
+        p = Path(path).expanduser().resolve()
+    except Exception:
+        raise HTTPException(400, "Invalid path")
+    if not p.exists() or not p.is_dir():
+        raise HTTPException(404, f"Not a directory: {path}")
+
+    dirs = []
+    files = []
+    try:
+        for child in sorted(p.iterdir(), key=lambda x: x.name.lower()):
+            if child.name.startswith('.'):
+                continue
+            if child.is_dir():
+                dirs.append(child.name)
+            elif child.is_file():
+                files.append(child.name)
+    except PermissionError:
+        raise HTTPException(403, "Permission denied")
+
+    return JSONResponse({
+        "current": str(p),
+        "parent": str(p.parent) if p != p.parent else None,
+        "dirs": dirs,
+        "files": files,
+    })
+
+
 @app.get("/api/models")
 def list_models():
     """List available YOLO models in the model directory"""
