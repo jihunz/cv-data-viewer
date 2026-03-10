@@ -851,20 +851,26 @@ def scan_metrics(base_dir: str = Query(...)):
     return JSONResponse({"experiments": experiments, "base_dir": str(base_path)})
 
 
+def _container_to_host(path_str: str) -> str:
+    """Reverse-map container path back to host path for client display."""
+    for host_prefix, container_prefix in PATH_MAPPINGS:
+        if path_str.startswith(container_prefix):
+            return host_prefix + path_str[len(container_prefix):]
+    return path_str
+
+
 @app.get("/api/browse")
 def browse_directory(path: str = Query("~")):
     """List directories and files for the file browser."""
-    try:
-        p = Path(path).expanduser().resolve()
-    except Exception:
-        raise HTTPException(400, "Invalid path")
-    if not p.exists() or not p.is_dir():
+    # Accept host paths: map to container path for actual browsing
+    resolved = resolve_dataset_path(path)
+    if not resolved.exists() or not resolved.is_dir():
         raise HTTPException(404, f"Not a directory: {path}")
 
     dirs = []
     files = []
     try:
-        for child in sorted(p.iterdir(), key=lambda x: x.name.lower()):
+        for child in sorted(resolved.iterdir(), key=lambda x: x.name.lower()):
             if child.name.startswith('.'):
                 continue
             if child.is_dir():
@@ -874,9 +880,13 @@ def browse_directory(path: str = Query("~")):
     except PermissionError:
         raise HTTPException(403, "Permission denied")
 
+    # Return host paths so the form values work with resolve_dataset_path
+    host_current = _container_to_host(str(resolved))
+    host_parent = _container_to_host(str(resolved.parent)) if resolved != resolved.parent else None
+
     return JSONResponse({
-        "current": str(p),
-        "parent": str(p.parent) if p != p.parent else None,
+        "current": host_current,
+        "parent": host_parent,
         "dirs": dirs,
         "files": files,
     })
