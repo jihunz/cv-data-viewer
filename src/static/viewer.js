@@ -48,6 +48,8 @@
   const nextBtn = document.getElementById('next-btn');
   const lastBtn = document.getElementById('last-btn');
   const autoBtn = document.getElementById('auto-btn');
+  const autoSpeedSlider = document.getElementById('auto-speed');
+  const autoSpeedLabel = document.getElementById('auto-speed-label');
   const excludeBtn = document.getElementById('exclude-btn');
   const exportBtn = document.getElementById('export-btn');
   const selectedCountEl = document.getElementById('selected-count');
@@ -856,18 +858,27 @@
       navigateSearch('next');
   }
 
+  function getAutoSpeed() {
+    return autoSpeedSlider ? parseInt(autoSpeedSlider.value, 10) : 400;
+  }
+
+  function startAutoInterval() {
+    if (autoInterval) clearInterval(autoInterval);
+    autoInterval = setInterval(() => {
+      if (currentIndex + BATCH_SIZE >= total) {
+        stopAuto();
+        return;
+      }
+      nextBatch();
+    }, getAutoSpeed());
+  }
+
   function toggleAuto() {
     autoActive = !autoActive;
     if (autoActive) {
       autoBtn.classList.add('active');
       autoBtn.textContent = 'Stop Auto';
-      autoInterval = setInterval(() => {
-        if (currentIndex + BATCH_SIZE >= total) {
-          stopAuto();
-          return;
-        }
-        nextBatch();
-      }, 400); // Optimized: 0.4 seconds per batch
+      startAutoInterval();
     } else {
       stopAuto();
     }
@@ -990,6 +1001,19 @@
   prevBtn.addEventListener('click', () => { stopAuto(); prevBatch(); });
   nextBtn.addEventListener('click', () => { stopAuto(); nextBatch(); });
   autoBtn.addEventListener('click', toggleAuto);
+  if (autoSpeedSlider) {
+    autoSpeedSlider.addEventListener('input', () => {
+      const v = parseInt(autoSpeedSlider.value, 10);
+      if (autoSpeedLabel) autoSpeedLabel.textContent = v + 'ms';
+      if (autoActive) {
+        clearInterval(autoInterval);
+        autoInterval = setInterval(() => {
+          if (currentIndex + BATCH_SIZE >= total) { stopAuto(); return; }
+          nextBatch();
+        }, v);
+      }
+    });
+  }
   excludeBtn.addEventListener('click', excludeSelected);
   exportBtn.addEventListener('click', exportExcluded);
   

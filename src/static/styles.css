@@ -447,6 +447,19 @@ input[type="text"]:focus {
   align-items: center;
 }
 
+.auto-speed-slider {
+  width: 80px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.auto-speed-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  min-width: 3.2em;
+}
+
 .btn {
   height: 40px;
   padding: 0 1.25rem;
