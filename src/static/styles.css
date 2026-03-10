@@ -39,38 +39,48 @@ body {
 
 .landing {
   width: 100%;
-  max-width: 1200px;
+  max-width: 900px;
   padding: 2rem;
-    display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.hero-copy {
+  text-align: center;
 }
 
 .hero-copy h1 {
-  font-size: 3.5rem;
+  font-size: 3rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   background: linear-gradient(to right, #fff, #94a3b8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   line-height: 1.1;
 }
 
 .hero-copy p {
-  font-size: 1.125rem;
+  font-size: 1.05rem;
   color: var(--text-secondary);
-    line-height: 1.6;
-  margin-bottom: 2rem;
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+
+.hero-points {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .hero-points li {
-  margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   color: var(--text-primary);
+  font-size: 0.95rem;
 }
 
 .dataset-form {

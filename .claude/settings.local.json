@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(__NEW_LINE_bd58d25da633aad2__ echo \"\")",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker compose restart:*)"
+    ]
+  }
+}

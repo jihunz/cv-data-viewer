@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MegaFall Viewer</title>
-    <link rel="stylesheet" href="/static/styles.css?v=4" />
+    <link rel="stylesheet" href="/static/styles.css?v=5" />
 </head>
 <body class="index-body">
     {% set current_mode = prefill.mode if prefill and prefill.mode else 'folder' %}
@@ -19,26 +19,24 @@
         </div>
     </div>
     <main class="landing">
-        <section class="hero">
-            <div class="hero-copy">
-                <h1>CV Data Viewer</h1>
-                <p>정확한 품질 검수를 위해 두 가지 입력 방식을 지원합니다. 팀의 워크플로우에 맞춰 폴더 혹은 train.txt 파일을 선택하고, 즉시 뷰어를 실행하세요.</p>
-                <ul class="hero-points">
-                    <li>
-                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                        폴더 모드: 이미지와 라벨 폴더를 그대로 탐색
-                    </li>
-                    <li>
-                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        Train.txt 모드: 학습 리스트 파일로 빠른 검토
-                    </li>
-                    <li>
-                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                        4x Grid 뷰: 4배 더 빠른 멀티태스킹 검수
-                    </li>
-                </ul>
-            </div>
-        </section>
+        <div class="hero-copy">
+            <h1>CV Data Viewer</h1>
+            <p>팀의 워크플로우에 맞춰 폴더 혹은 train.txt 파일을 선택하고, 즉시 뷰어를 실행하세요.</p>
+            <ul class="hero-points">
+                <li>
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                    폴더 모드
+                </li>
+                <li>
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Train.txt 모드
+                </li>
+                <li>
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    4x Grid 뷰
+                </li>
+            </ul>
+        </div>
 
         <form action="/viewer" method="get" class="dataset-form glass-card" id="path-form">
             <header class="form-header">
