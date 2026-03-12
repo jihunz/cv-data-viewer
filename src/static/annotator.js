@@ -21,6 +21,9 @@ window.openExportModal = () => {
     
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
+    const firstBtn = document.getElementById('first-btn');
+    const lastBtn = document.getElementById('last-btn');
+    const searchInput = document.getElementById('search-input');
     const saveBtn = document.getElementById('save-btn');
     // exportBtn is handled via window.openExportModal
     
@@ -31,9 +34,7 @@ window.openExportModal = () => {
     const resizeW = document.getElementById('resize-w');
     const resizeH = document.getElementById('resize-h');
 
-    // Navigation Elements (footer-based)
-    const navImgPath = document.getElementById('nav-img-path');
-    const navLabelPath = document.getElementById('nav-label-path');
+    // Navigation
 
     // AI Mode Elements
     const aiModeToggle = document.getElementById('ai-mode-toggle');
@@ -148,10 +149,6 @@ window.openExportModal = () => {
     }
 
     function initNavigation() {
-        if (labelDir && navLabelPath) {
-            navLabelPath.style.display = '';
-        }
-
         // counter-input: focus → select, Enter → jump
         if (progressText) {
             progressText.addEventListener('focus', () => {
@@ -166,9 +163,39 @@ window.openExportModal = () => {
             });
         }
 
-        // Click to copy path
-        if (navImgPath) navImgPath.onclick = () => copyPathToClipboard(navImgPath);
-        if (navLabelPath) navLabelPath.onclick = () => copyPathToClipboard(navLabelPath);
+        // search-input: Enter → find next match
+        if (searchInput) {
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchFilename(searchInput.value.trim());
+                }
+            });
+        }
+    }
+
+    function searchFilename(query) {
+        if (!query) return;
+        const q = query.toLowerCase();
+        // Search forward from current index, wrap around
+        for (let i = 1; i <= total; i++) {
+            const idx = (currentIndex + i) % total;
+            const name = (images[idx] || '').toLowerCase();
+            if (name.includes(q)) {
+                saveCurrent().then(() => loadIndex(idx));
+                return;
+            }
+        }
+    }
+
+    function goToFirst() {
+        stopAuto();
+        saveCurrent().then(() => loadIndex(0));
+    }
+
+    function goToLast() {
+        stopAuto();
+        saveCurrent().then(() => loadIndex(total - 1));
     }
 
     function jumpToIndex(val) {
@@ -180,26 +207,15 @@ window.openExportModal = () => {
         saveCurrent().then(() => loadIndex(idx));
     }
 
-    function updateNavPaths() {
-        const relPath = images[currentIndex] || '';
-        if (navImgPath) {
-            navImgPath.innerHTML = `<b>IMG</b> ${relPath || '-'}`;
-            navImgPath.title = relPath || '';
-        }
-        if (labelDir && navLabelPath) {
+    function updateFilenameDisplay(relPath) {
+        if (!filenameDisplay) return;
+        if (!relPath) { filenameDisplay.textContent = '-'; return; }
+        if (labelDir) {
             const labelRelPath = relPath.replace(/\.[^.]+$/, '.txt');
-            navLabelPath.innerHTML = `<b>LBL</b> ${labelRelPath || '-'}`;
-            navLabelPath.title = labelRelPath || '';
+            filenameDisplay.innerHTML = `<b>IMG</b> ${relPath} &nbsp; <b>LBL</b> ${labelRelPath}`;
+        } else {
+            filenameDisplay.textContent = relPath;
         }
-    }
-
-    function copyPathToClipboard(el) {
-        const text = el.textContent;
-        if (!text || text === '-') return;
-        navigator.clipboard.writeText(text).then(() => {
-            el.classList.add('copied');
-            setTimeout(() => el.classList.remove('copied'), 1000);
-        });
     }
 
     // --- Point Mode ---
@@ -647,9 +663,8 @@ window.openExportModal = () => {
         
         currentIndex = idx;
         const relPath = images[currentIndex];
-        if (filenameDisplay) filenameDisplay.textContent = relPath;
+        updateFilenameDisplay(relPath);
         if (progressText) progressText.value = `${currentIndex + 1} / ${total}`;
-        updateNavPaths();
 
         const url = new URL('/image', window.location.origin);
         url.searchParams.set('mode', 'folder');
@@ -839,9 +854,8 @@ window.openExportModal = () => {
 
         currentIndex = idx;
         const relPath = images[currentIndex];
-        if (filenameDisplay) filenameDisplay.textContent = relPath;
+        updateFilenameDisplay(relPath);
         if (progressText) progressText.value = `${currentIndex + 1} / ${total}`;
-        updateNavPaths();
 
         const url = new URL('/image', window.location.origin);
         url.searchParams.set('mode', 'folder');
@@ -981,6 +995,24 @@ window.openExportModal = () => {
         };
     }
 
+    // Class color palette
+    const CLASS_COLORS = [
+        '#ef4444', '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6',
+        '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1',
+        '#14b8a6', '#e11d48', '#0ea5e9', '#a855f7', '#eab308',
+        '#22c55e', '#f43f5e', '#2563eb', '#d946ef', '#64748b',
+    ];
+    function classColor(clsId) {
+        return CLASS_COLORS[clsId % CLASS_COLORS.length];
+    }
+    function classColorAlpha(clsId, alpha) {
+        const hex = classColor(clsId);
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
+
     function redraw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (!currentImage.width) return;
@@ -991,29 +1023,38 @@ window.openExportModal = () => {
 
         boxes.forEach((box, i) => {
             const isActive = i === activeBoxIdx;
+            const clsId = box[0];
+            const color = classColor(clsId);
             const s = toScreen(box[1], box[2], box[3], box[4]);
-            
-            ctx.lineWidth = isActive ? 2 : 1.5;
-            ctx.strokeStyle = isActive ? '#10b981' : 'rgba(239, 68, 68, 0.8)';
-            
-            ctx.fillStyle = isActive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.1)';
+
+            ctx.lineWidth = isActive ? 2.5 : 1.5;
+            ctx.strokeStyle = isActive ? '#fff' : classColorAlpha(clsId, 0.8);
+
+            ctx.fillStyle = classColorAlpha(clsId, isActive ? 0.25 : 0.1);
             ctx.fillRect(s.x, s.y, s.w, s.h);
             ctx.strokeRect(s.x, s.y, s.w, s.h);
-            
-            const label = `#${i + 1} Cls ${box[0]}`;
+
+            // Active box: draw colored border inside white border
+            if (isActive) {
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = color;
+                ctx.strokeRect(s.x + 2, s.y + 2, s.w - 4, s.h - 4);
+            }
+
+            const label = `#${i + 1} Cls ${clsId}`;
             ctx.font = 'bold 12px Inter, sans-serif';
             const tm = ctx.measureText(label);
-            ctx.fillStyle = isActive ? '#10b981' : '#ef4444';
+            ctx.fillStyle = color;
             ctx.fillRect(s.x, s.y - 18, tm.width + 8, 18);
-            
+
             ctx.fillStyle = '#fff';
             ctx.fillText(label, s.x + 4, s.y - 5);
 
             if (isActive) {
-                drawFancyHandle(s.x, s.y);
-                drawFancyHandle(s.x + s.w, s.y);
-                drawFancyHandle(s.x, s.y + s.h);
-                drawFancyHandle(s.x + s.w, s.y + s.h);
+                drawFancyHandle(s.x, s.y, color);
+                drawFancyHandle(s.x + s.w, s.y, color);
+                drawFancyHandle(s.x, s.y + s.h, color);
+                drawFancyHandle(s.x + s.w, s.y + s.h, color);
             }
         });
         
@@ -1022,10 +1063,10 @@ window.openExportModal = () => {
         }
     }
 
-    function drawFancyHandle(x, y) {
+    function drawFancyHandle(x, y, color) {
         const size = 8;
         ctx.fillStyle = '#fff';
-        ctx.strokeStyle = '#10b981';
+        ctx.strokeStyle = color || '#10b981';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, size / 2, 0, Math.PI * 2);
@@ -1444,7 +1485,7 @@ window.openExportModal = () => {
             }
         }
         
-        if (e.target.tagName === 'INPUT') return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
             e.preventDefault();
@@ -1452,12 +1493,26 @@ window.openExportModal = () => {
             return;
         }
 
-        if (e.key === 'd' || e.key === 'ArrowRight') {
-            if (isBatchDetecting) return; // Disable during batch
+        if (e.key === ' ') {
+            e.preventDefault();
+            if (isBatchDetecting) return;
+            toggleAuto();
+        } else if (e.key === 'd' || e.key === 'ArrowRight') {
+            if (isBatchDetecting) return;
+            stopAuto();
             saveCurrent().then(() => loadIndex(currentIndex + 1));
         } else if (e.key === 'a' || e.key === 'ArrowLeft') {
-            if (isBatchDetecting) return; // Disable during batch
+            if (isBatchDetecting) return;
+            stopAuto();
             saveCurrent().then(() => loadIndex(currentIndex - 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (isBatchDetecting) return;
+            goToFirst();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (isBatchDetecting) return;
+            goToLast();
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
             if (activeBoxIdx !== -1) {
                 pushHistory();
@@ -1489,9 +1544,56 @@ window.openExportModal = () => {
         }
     });
 
+    // --- Auto Play ---
+    const autoBtn = document.getElementById('auto-btn');
+    const autoSpeedSlider = document.getElementById('auto-speed');
+    const autoSpeedLabel = document.getElementById('auto-speed-label');
+    const autoBtnSvg = autoBtn ? autoBtn.querySelector('svg')?.outerHTML || '' : '';
+    let autoInterval = null;
+    let autoActive = false;
+
+    function getAutoSpeed() {
+        return autoSpeedSlider ? parseInt(autoSpeedSlider.value, 10) : 500;
+    }
+
+    function startAutoInterval() {
+        if (autoInterval) clearInterval(autoInterval);
+        autoInterval = setInterval(() => {
+            if (currentIndex + 1 >= total) { stopAuto(); return; }
+            saveCurrent().then(() => loadIndex(currentIndex + 1));
+        }, getAutoSpeed());
+    }
+
+    function toggleAuto() {
+        autoActive = !autoActive;
+        if (autoActive) {
+            if (autoBtn) { autoBtn.classList.add('active'); autoBtn.innerHTML = autoBtnSvg + ' Stop'; }
+            startAutoInterval();
+        } else {
+            stopAuto();
+        }
+    }
+
+    function stopAuto() {
+        autoActive = false;
+        if (autoBtn) { autoBtn.classList.remove('active'); autoBtn.innerHTML = autoBtnSvg + ' Auto'; }
+        if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+    }
+
+    if (autoBtn) autoBtn.addEventListener('click', toggleAuto);
+    if (autoSpeedSlider) {
+        autoSpeedSlider.addEventListener('input', () => {
+            const v = parseInt(autoSpeedSlider.value, 10);
+            if (autoSpeedLabel) autoSpeedLabel.textContent = v + 'ms';
+            if (autoActive) startAutoInterval();
+        });
+    }
+
     // --- Start ---
-    if (prevBtn) prevBtn.onclick = () => { saveCurrent().then(() => loadIndex(currentIndex - 1)); };
-    if (nextBtn) nextBtn.onclick = () => { saveCurrent().then(() => loadIndex(currentIndex + 1)); };
+    if (firstBtn) firstBtn.onclick = goToFirst;
+    if (prevBtn) prevBtn.onclick = () => { stopAuto(); saveCurrent().then(() => loadIndex(currentIndex - 1)); };
+    if (nextBtn) nextBtn.onclick = () => { stopAuto(); saveCurrent().then(() => loadIndex(currentIndex + 1)); };
+    if (lastBtn) lastBtn.onclick = goToLast;
     if (saveBtn) saveBtn.onclick = () => saveCurrent();
 
     init();

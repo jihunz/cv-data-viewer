@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MegaFall Viewer</title>
     <link rel="stylesheet" href="/static/styles.css?v=6" />
+    <style>
+        .path-type-buttons { display: flex; gap: 0.5rem; }
+        .path-type-btn {
+            flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;
+            background: transparent; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .path-type-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+        .path-type-btn.active {
+            background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+        }
+    </style>
 </head>
 <body class="index-body">
     {% set current_mode = prefill.mode if prefill and prefill.mode else 'folder' %}
@@ -59,11 +71,6 @@
             <fieldset class="mode-toggle">
                 <legend>Dataset source</legend>
                 <div class="mode-options">
-                    <input type="radio" name="mode" id="mode-dataset" value="dataset" {% if current_mode == 'dataset' %}checked{% endif %} />
-                    <label for="mode-dataset" class="mode-option">
-                        <span class="mode-title">데이터셋</span>
-                        <span class="mode-desc">images/ labels/ 자동 탐색</span>
-                    </label>
                     <input type="radio" name="mode" id="mode-folder" value="folder" {% if current_mode == 'folder' %}checked{% endif %} />
                     <label for="mode-folder" class="mode-option">
                         <span class="mode-title">폴더</span>
@@ -88,10 +95,19 @@
             </fieldset>
 
             <div class="input-grid">
-                <div class="mode-field hidden" data-mode="dataset">
+                <!-- Path type toggle (folder/annotate 모드 공용) -->
+                <div class="mode-field hidden" data-mode="path-type-toggle">
+                    <div class="path-type-buttons">
+                        <button type="button" class="path-type-btn active" data-path-type="dataset">데이터셋 디렉터리</button>
+                        <button type="button" class="path-type-btn" data-path-type="individual">개별 선택</button>
+                    </div>
+                </div>
+
+                <!-- 데이터셋 디렉터리 (단일 경로) -->
+                <div class="mode-field hidden" data-mode="dataset-dir">
                     <label for="dataset-dir-input" class="input-label">
-                        <span class="label-title">데이터셋 디렉터리</span>
-                        <span class="label-hint">하위 images/, labels/ 폴더를 자동 탐색합니다</span>
+                        <span class="label-title">데이터셋 경로</span>
+                        <span class="label-hint">하위 images/, labels/ 자동 탐색</span>
                     </label>
                     <div class="input-with-browse">
                         <input id="dataset-dir-input" type="text" placeholder="/path/to/dataset" value="" />
@@ -99,21 +115,8 @@
                     </div>
                 </div>
 
-                <div class="mode-field hidden" data-mode="dataset-action">
-                    <label class="input-label">
-                        <span class="label-title">실행 모드</span>
-                    </label>
-                    <div style="display:flex;gap:0.75rem;">
-                        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.9rem;color:var(--text-secondary);">
-                            <input type="radio" name="dataset_action" value="view" checked style="accent-color:var(--accent);" /> View
-                        </label>
-                        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.9rem;color:var(--text-secondary);">
-                            <input type="radio" name="dataset_action" value="annotate" style="accent-color:var(--accent);" /> Annotate
-                        </label>
-                    </div>
-                </div>
-
-                <div class="mode-field" data-mode="folder">
+                <!-- 개별 선택: 이미지 디렉터리 -->
+                <div class="mode-field hidden" data-mode="folder">
                     <label for="img-dir-input" class="input-label">
                         <span class="label-title">이미지 디렉터리</span>
                         <span class="label-hint">예: /datasets/images</span>
@@ -124,7 +127,7 @@
                     </div>
                 </div>
 
-                <div class="mode-field" data-mode="txt">
+                <div class="mode-field hidden" data-mode="txt">
                     <label for="train-file-input" class="input-label">
                         <span class="label-title">train.txt 파일</span>
                         <span class="label-hint">학습 이미지 경로 리스트</span>
@@ -135,7 +138,8 @@
                     </div>
                 </div>
 
-                <div class="mode-field" data-mode="shared">
+                <!-- 개별 선택: 라벨 디렉터리 (folder 모드 공유) -->
+                <div class="mode-field hidden" data-mode="shared">
                     <label for="label-dir-input" class="input-label">
                         <span class="label-title">라벨 디렉터리</span>
                         <span class="label-hint">YOLO 포맷, 이미지와 동일 구조</span>
@@ -146,6 +150,7 @@
                     </div>
                 </div>
 
+                <!-- 개별 선택: Annotate 라벨 디렉터리 -->
                 <div class="mode-field hidden" data-mode="annotate-label">
                     <label for="annotate-label-dir-input" class="input-label">
                         <span class="label-title">라벨 디렉터리 (선택)</span>
@@ -222,9 +227,11 @@
         const progressBar = document.getElementById('loading-progress');
         const percentText = document.getElementById('loading-percent');
         const modeRadios = Array.from(form.querySelectorAll('input[name="mode"]'));
-        const datasetField = form.querySelector('.mode-field[data-mode="dataset"]');
-        const datasetActionField = form.querySelector('.mode-field[data-mode="dataset-action"]');
+        const pathTypeToggle = form.querySelector('.mode-field[data-mode="path-type-toggle"]');
+        const datasetDirField = form.querySelector('.mode-field[data-mode="dataset-dir"]');
         const datasetDirInput = document.getElementById('dataset-dir-input');
+        const pathTypeBtns = form.querySelectorAll('.path-type-btn');
+        let currentPathType = 'dataset'; // 'dataset' or 'individual'
         const folderFields = form.querySelectorAll('.mode-field[data-mode="folder"]');
         const txtField = form.querySelector('.mode-field[data-mode="txt"]');
         const annotateLabelField = form.querySelector('.mode-field[data-mode="annotate-label"]');
@@ -273,6 +280,7 @@
         function applyMode(mode) {
             const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
 
+            // Hide all
             folderFields.forEach(el => el.classList.add('hidden'));
             txtField.classList.add('hidden');
             if (sharedLabelField) sharedLabelField.classList.add('hidden');
@@ -280,41 +288,70 @@
             if (compareQuickField) compareQuickField.classList.add('hidden');
             if (compareSelectsField) compareSelectsField.classList.add('hidden');
             if (compareGtField) compareGtField.classList.add('hidden');
-            if (datasetField) datasetField.classList.add('hidden');
-            if (datasetActionField) datasetActionField.classList.add('hidden');
+            if (pathTypeToggle) pathTypeToggle.classList.add('hidden');
+            if (datasetDirField) datasetDirField.classList.add('hidden');
 
             imgDirInput.disabled = true; imgDirInput.required = false;
             trainFileInput.disabled = true; trainFileInput.required = false;
             labelDirInput.disabled = true; labelDirInput.required = false;
             if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
 
-            if (mode === 'dataset') {
-                if (datasetField) datasetField.classList.remove('hidden');
-                if (datasetActionField) datasetActionField.classList.remove('hidden');
+            if (mode === 'folder' || mode === 'annotate') {
+                // Show path type toggle
+                if (pathTypeToggle) pathTypeToggle.classList.remove('hidden');
+                applyPathType(mode);
             } else if (mode === 'txt') {
                 txtField.classList.remove('hidden');
                 trainFileInput.disabled = false;
                 trainFileInput.required = true;
-            } else if (mode === 'annotate') {
-                folderFields.forEach(el => {
-                    if (el.querySelector('input[name="img_dir"]')) el.classList.remove('hidden');
-                });
-                imgDirInput.disabled = false;
-                imgDirInput.required = true;
-                if (annotateLabelField) annotateLabelField.classList.remove('hidden');
-                if (annotateLabelDirInput) annotateLabelDirInput.disabled = false;
+                if (sharedLabelField) sharedLabelField.classList.remove('hidden');
+                labelDirInput.disabled = false;
             } else if (mode === 'compare') {
                 if (compareQuickField) compareQuickField.classList.remove('hidden');
                 if (compareGtField) compareGtField.classList.remove('hidden');
-            } else {
-                folderFields.forEach(el => el.classList.remove('hidden'));
-                if (sharedLabelField) sharedLabelField.classList.remove('hidden');
-                imgDirInput.disabled = false;
-                imgDirInput.required = true;
-                labelDirInput.disabled = false;
-                labelDirInput.required = true;
             }
         }
+
+        function applyPathType(mode) {
+            const sharedLabelField = form.querySelector('.mode-field[data-mode="shared"]');
+            // Hide both sub-views
+            folderFields.forEach(el => el.classList.add('hidden'));
+            if (sharedLabelField) sharedLabelField.classList.add('hidden');
+            if (annotateLabelField) annotateLabelField.classList.add('hidden');
+            if (datasetDirField) datasetDirField.classList.add('hidden');
+            imgDirInput.disabled = true; imgDirInput.required = false;
+            labelDirInput.disabled = true; labelDirInput.required = false;
+            if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
+
+            if (currentPathType === 'dataset') {
+                if (datasetDirField) datasetDirField.classList.remove('hidden');
+            } else {
+                // individual
+                if (mode === 'folder') {
+                    folderFields.forEach(el => el.classList.remove('hidden'));
+                    if (sharedLabelField) sharedLabelField.classList.remove('hidden');
+                    imgDirInput.disabled = false; imgDirInput.required = true;
+                    labelDirInput.disabled = false; labelDirInput.required = true;
+                } else if (mode === 'annotate') {
+                    folderFields.forEach(el => {
+                        if (el.querySelector('input[name="img_dir"]')) el.classList.remove('hidden');
+                    });
+                    imgDirInput.disabled = false; imgDirInput.required = true;
+                    if (annotateLabelField) annotateLabelField.classList.remove('hidden');
+                    if (annotateLabelDirInput) annotateLabelDirInput.disabled = false;
+                }
+            }
+        }
+
+        // Path type button toggle
+        pathTypeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentPathType = btn.dataset.pathType;
+                pathTypeBtns.forEach(b => b.classList.toggle('active', b === btn));
+                const mode = selectedMode();
+                if (mode === 'folder' || mode === 'annotate') applyPathType(mode);
+            });
+        });
 
         const initialMode = {{ current_mode | tojson }};
         applyMode(initialMode);
@@ -333,28 +370,30 @@
             const labelDir = labelDirInput.value.trim();
             const gtLabelDir = form.querySelector('input[name="gt_label_dir"]') ? form.querySelector('input[name="gt_label_dir"]').value.trim() : '';
 
-            if (mode === 'dataset') {
+            // Dataset dir mode: resolve to images/ labels/ paths
+            if ((mode === 'folder' || mode === 'annotate') && currentPathType === 'dataset') {
                 const dsDir = datasetDirInput.value.trim();
                 if (!dsDir) { showToast('데이터셋 디렉터리를 입력해주세요', 'error'); return; }
-                const dsAction = form.querySelector('input[name="dataset_action"]:checked').value;
                 const dsImgDir = dsDir + '/images';
                 const dsLabelDir = dsDir + '/labels';
-                if (dsAction === 'annotate') {
+                if (mode === 'annotate') {
                     const params = new URLSearchParams();
                     params.set('img_dir', dsImgDir);
                     params.set('label_dir', dsLabelDir);
                     window.location.href = `/annotate?${params.toString()}`;
                     return;
                 }
-                // View mode: use folder mode flow
+                // folder view: override values and continue as folder mode
                 imgDirInput.value = dsImgDir;
                 labelDirInput.value = dsLabelDir;
-                // Override to folder mode for the rest of the submit logic
+                // Re-read overridden values
+                const imgDir2 = dsImgDir;
+                const labelDir2 = dsLabelDir;
                 overlay.classList.remove('hidden');
                 const dsParams = new URLSearchParams();
                 dsParams.set('mode', 'folder');
-                dsParams.set('img_dir', dsImgDir);
-                dsParams.set('label_dir', dsLabelDir);
+                dsParams.set('img_dir', imgDir2);
+                dsParams.set('label_dir', labelDir2);
                 eventSource = new EventSource(`/api/progress?${dsParams.toString()}`);
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);

@@ -78,10 +78,6 @@
             grid-column: 1 / -1;
             background: var(--bg-secondary);
             border-top: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 2rem;
         }
 
         /* ===== Sidebar Design System ===== */
@@ -344,42 +340,46 @@
             opacity: 0.5;
         }
 
-        /* Footer Navigation */
-        .footer-nav-group {
+        /* Footer — reuse viewer pattern */
+        .ann-footer {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            justify-content: center;
+            gap: 2rem;
+            padding: 0 1rem;
         }
 
-        .footer-path {
-            font-size: 0.65rem;
-            font-family: 'SF Mono', 'Consolas', monospace;
-            color: var(--text-secondary);
-            cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            padding: 0.15rem 0.4rem;
-            border-radius: 3px;
-            transition: color 0.15s, background 0.15s;
-            min-width: 0;
-            flex: 1;
+        .ann-footer .control-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
         }
 
-        .footer-path b {
-            color: var(--accent);
-            font-size: 0.6rem;
-            font-weight: 700;
-            margin-right: 0.25rem;
+        .ann-footer .btn {
+            height: 36px;
+            padding: 0 0.75rem;
+            font-size: 0.8rem;
         }
 
-        .footer-path:hover {
+        .ann-footer .btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .ann-footer .search-input {
+            height: 36px;
+            padding: 0 0.6rem;
+            width: 160px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
             color: var(--text-primary);
-            background: var(--bg-hover);
+            border-radius: 8px;
+            font-size: 0.8rem;
         }
 
-        .footer-path.copied {
-            color: #10b981;
+        .ann-footer .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
         }
 
         /* Box List */
@@ -434,8 +434,18 @@
             background: rgba(0,0,0,0.7);
             padding: 0.5rem 1rem;
             border-radius: 99px;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             pointer-events: none;
+            max-width: 80%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .image-meta b {
+            color: var(--accent);
+            font-size: 0.7rem;
+            margin-right: 0.2rem;
         }
     </style>
 </head>
@@ -600,16 +610,33 @@
             <div class="image-meta" id="filename-display">Loading...</div>
         </main>
 
-        <!-- Footer -->
+        <!-- Footer (viewer pattern) -->
         <footer class="ann-footer">
-            <div class="control-group footer-nav-group">
+            <div class="control-group">
+                <button id="first-btn" class="btn" title="First (↑)">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+                </button>
+                <button id="prev-btn" class="btn" title="Prev (A / ←)">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+                    Prev
+                </button>
                 <input type="text" id="progress-text" class="counter-input" value="0 / 0" />
-                <span class="footer-path" id="nav-img-path" title="Click to copy"><b>IMG</b> -</span>
-                <span class="footer-path" id="nav-label-path" title="Click to copy" style="display:none;"><b>LBL</b> -</span>
+                <button id="next-btn" class="btn" title="Next (D / →)">
+                    Next
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+                <button id="last-btn" class="btn" title="Last (↓)">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                </button>
             </div>
             <div class="control-group">
-                <button class="btn" id="prev-btn">← Prev (A)</button>
-                <button class="btn primary" id="next-btn">Next (D) →</button>
+                <input type="text" id="search-input" class="search-input" placeholder="Search filename..." />
+                <button id="auto-btn" class="btn" title="Auto Play (Space)">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Auto
+                </button>
+                <input type="range" id="auto-speed" class="auto-speed-slider" min="33" max="2000" value="500" step="1" title="Auto Play Speed" />
+                <span id="auto-speed-label" class="auto-speed-label">500ms</span>
             </div>
         </footer>
     </div>
@@ -783,7 +810,7 @@
             }
         }
     </script>
-    <script src="/static/annotator.js?v=15"></script>
+    <script src="/static/annotator.js?v=16"></script>
 </body>
 </html>
 
