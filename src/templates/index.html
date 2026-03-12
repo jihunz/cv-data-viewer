@@ -59,6 +59,11 @@
             <fieldset class="mode-toggle">
                 <legend>Dataset source</legend>
                 <div class="mode-options">
+                    <input type="radio" name="mode" id="mode-dataset" value="dataset" {% if current_mode == 'dataset' %}checked{% endif %} />
+                    <label for="mode-dataset" class="mode-option">
+                        <span class="mode-title">데이터셋</span>
+                        <span class="mode-desc">images/ labels/ 자동 탐색</span>
+                    </label>
                     <input type="radio" name="mode" id="mode-folder" value="folder" {% if current_mode == 'folder' %}checked{% endif %} />
                     <label for="mode-folder" class="mode-option">
                         <span class="mode-title">폴더</span>
@@ -83,6 +88,31 @@
             </fieldset>
 
             <div class="input-grid">
+                <div class="mode-field hidden" data-mode="dataset">
+                    <label for="dataset-dir-input" class="input-label">
+                        <span class="label-title">데이터셋 디렉터리</span>
+                        <span class="label-hint">하위 images/, labels/ 폴더를 자동 탐색합니다</span>
+                    </label>
+                    <div class="input-with-browse">
+                        <input id="dataset-dir-input" type="text" placeholder="/path/to/dataset" value="" />
+                        <button type="button" class="browse-btn" data-target="dataset-dir-input">Browse</button>
+                    </div>
+                </div>
+
+                <div class="mode-field hidden" data-mode="dataset-action">
+                    <label class="input-label">
+                        <span class="label-title">실행 모드</span>
+                    </label>
+                    <div style="display:flex;gap:0.75rem;">
+                        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.9rem;color:var(--text-secondary);">
+                            <input type="radio" name="dataset_action" value="view" checked style="accent-color:var(--accent);" /> View
+                        </label>
+                        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.9rem;color:var(--text-secondary);">
+                            <input type="radio" name="dataset_action" value="annotate" style="accent-color:var(--accent);" /> Annotate
+                        </label>
+                    </div>
+                </div>
+
                 <div class="mode-field" data-mode="folder">
                     <label for="img-dir-input" class="input-label">
                         <span class="label-title">이미지 디렉터리</span>
@@ -192,6 +222,9 @@
         const progressBar = document.getElementById('loading-progress');
         const percentText = document.getElementById('loading-percent');
         const modeRadios = Array.from(form.querySelectorAll('input[name="mode"]'));
+        const datasetField = form.querySelector('.mode-field[data-mode="dataset"]');
+        const datasetActionField = form.querySelector('.mode-field[data-mode="dataset-action"]');
+        const datasetDirInput = document.getElementById('dataset-dir-input');
         const folderFields = form.querySelectorAll('.mode-field[data-mode="folder"]');
         const txtField = form.querySelector('.mode-field[data-mode="txt"]');
         const annotateLabelField = form.querySelector('.mode-field[data-mode="annotate-label"]');
@@ -247,13 +280,18 @@
             if (compareQuickField) compareQuickField.classList.add('hidden');
             if (compareSelectsField) compareSelectsField.classList.add('hidden');
             if (compareGtField) compareGtField.classList.add('hidden');
+            if (datasetField) datasetField.classList.add('hidden');
+            if (datasetActionField) datasetActionField.classList.add('hidden');
 
             imgDirInput.disabled = true; imgDirInput.required = false;
             trainFileInput.disabled = true; trainFileInput.required = false;
             labelDirInput.disabled = true; labelDirInput.required = false;
             if (annotateLabelDirInput) annotateLabelDirInput.disabled = true;
 
-            if (mode === 'txt') {
+            if (mode === 'dataset') {
+                if (datasetField) datasetField.classList.remove('hidden');
+                if (datasetActionField) datasetActionField.classList.remove('hidden');
+            } else if (mode === 'txt') {
                 txtField.classList.remove('hidden');
                 trainFileInput.disabled = false;
                 trainFileInput.required = true;
@@ -294,6 +332,54 @@
             const trainFile = trainFileInput.value.trim();
             const labelDir = labelDirInput.value.trim();
             const gtLabelDir = form.querySelector('input[name="gt_label_dir"]') ? form.querySelector('input[name="gt_label_dir"]').value.trim() : '';
+
+            if (mode === 'dataset') {
+                const dsDir = datasetDirInput.value.trim();
+                if (!dsDir) { showToast('데이터셋 디렉터리를 입력해주세요', 'error'); return; }
+                const dsAction = form.querySelector('input[name="dataset_action"]:checked').value;
+                const dsImgDir = dsDir + '/images';
+                const dsLabelDir = dsDir + '/labels';
+                if (dsAction === 'annotate') {
+                    const params = new URLSearchParams();
+                    params.set('img_dir', dsImgDir);
+                    params.set('label_dir', dsLabelDir);
+                    window.location.href = `/annotate?${params.toString()}`;
+                    return;
+                }
+                // View mode: use folder mode flow
+                imgDirInput.value = dsImgDir;
+                labelDirInput.value = dsLabelDir;
+                // Override to folder mode for the rest of the submit logic
+                overlay.classList.remove('hidden');
+                const dsParams = new URLSearchParams();
+                dsParams.set('mode', 'folder');
+                dsParams.set('img_dir', dsImgDir);
+                dsParams.set('label_dir', dsLabelDir);
+                eventSource = new EventSource(`/api/progress?${dsParams.toString()}`);
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.status === 'progress') {
+                        progressBar.style.width = `${data.progress}%`;
+                        const etaTxt = data.eta != null ? ` (ETA ${data.eta}s)` : '';
+                        percentText.textContent = `${data.progress}%${etaTxt}`;
+                    } else if (data.status === 'done') {
+                        progressBar.style.width = '100%';
+                        percentText.textContent = `100% (elapsed ${data.elapsed}s)`;
+                        eventSource.close(); eventSource = null;
+                        setTimeout(() => { window.location.href = data.viewer_url; }, 200);
+                    } else if (data.status === 'error') {
+                        showToast(data.message, 'error');
+                        overlay.classList.add('hidden');
+                        eventSource.close(); eventSource = null;
+                    }
+                };
+                eventSource.onerror = () => {
+                    showToast('Connection lost while preparing viewer', 'error');
+                    overlay.classList.add('hidden');
+                    if (eventSource) eventSource.close(); eventSource = null;
+                };
+                return;
+            }
 
             if (mode === 'folder') {
                 if (!imgDir) { showToast('Image directory is required for folder mode', 'error'); return; }

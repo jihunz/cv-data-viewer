@@ -31,6 +31,10 @@ window.openExportModal = () => {
     const resizeW = document.getElementById('resize-w');
     const resizeH = document.getElementById('resize-h');
 
+    // Navigation Elements (footer-based)
+    const navImgPath = document.getElementById('nav-img-path');
+    const navLabelPath = document.getElementById('nav-label-path');
+
     // AI Mode Elements
     const aiModeToggle = document.getElementById('ai-mode-toggle');
     const aiOptions = document.getElementById('ai-options');
@@ -76,6 +80,38 @@ window.openExportModal = () => {
     let offsetX = 0;
     let offsetY = 0;
 
+    // Point Mode Elements & State
+    const pointModeToggle = document.getElementById('point-mode-toggle');
+    const pointOptions = document.getElementById('point-options');
+    const pointWSlider = document.getElementById('point-w');
+    const pointHSlider = document.getElementById('point-h');
+    const pointWVal = document.getElementById('point-w-val');
+    const pointHVal = document.getElementById('point-h-val');
+    let pointModeEnabled = false;
+    let pointBoxW = 0.15;
+    let pointBoxH = 0.30;
+
+    // CSV Class Map
+    const csvModeToggle = document.getElementById('csv-mode-toggle');
+    const csvOptions = document.getElementById('csv-options');
+    const csvPathInput = document.getElementById('csv-path');
+    const csvLoadBtn = document.getElementById('csv-load-btn');
+    const csvStatus = document.getElementById('csv-status');
+    let csvEnabled = false;
+    let csvData = {}; // { "fall-01": { 1: -1, 2: 1, ... }, ... }
+
+    // Range Edit Mode
+    const rangeClassInput = document.getElementById('range-class');
+    const rangeStartBtn = document.getElementById('range-start-btn');
+    const rangeApplyBtn = document.getElementById('range-apply-btn');
+    const rangeStatus = document.getElementById('range-status');
+    const rangeSection = document.querySelector('.sb-section--accent-purple');
+    let rangeStartIdx = -1;
+
+    // Class edit via keyboard (multi-digit with debounce)
+    let classKeyBuffer = '';
+    let classKeyTimer = null;
+
     // AI Mode State
     let aiModeEnabled = false;
     let isDetecting = false;
@@ -86,59 +122,282 @@ window.openExportModal = () => {
 
     // --- Initialization ---
     async function init() {
-        // Show label dir indicator if present
-        if (labelDir) {
-            console.log(`[Labels] Label directory: ${labelDir}`);
-            showLabelDirIndicator();
-        }
-        
+        // Initialize Navigation
+        initNavigation();
+
         if (total > 0) await loadIndex(0);
         window.addEventListener('resize', () => {
             fitImageToCanvas();
             redraw();
         });
-        
+
         // Bind Modal Events Here
         if (cancelExportBtn && exportModal) {
             cancelExportBtn.onclick = () => exportModal.classList.add('hidden');
         }
-        
+
         if (confirmExportBtn) {
             confirmExportBtn.onclick = handleExport;
         }
-        
+
         // Initialize AI Mode
         initAIMode();
+        initPointMode();
+        initCSVMode();
+        initRangeMode();
     }
-    
-    function showLabelDirIndicator() {
-        // Add indicator to the UI showing label directory is active
-        const sidebar = document.querySelector('.ann-sidebar');
-        if (!sidebar) return;
-        
-        const indicator = document.createElement('div');
-        indicator.className = 'label-dir-indicator';
-        indicator.innerHTML = `
-            <div style="padding: 0.75rem; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--accent); border-radius: 8px; margin-bottom: 1rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-                    <span style="font-size: 1rem;">📁</span>
-                    <span style="font-weight: 600; color: var(--accent);">라벨 수정 모드</span>
-                </div>
-                <div style="font-size: 0.75rem; color: var(--text-secondary); word-break: break-all;">
-                    ${labelDir}
-                </div>
-            </div>
-        `;
-        sidebar.insertBefore(indicator, sidebar.firstChild);
+
+    function initNavigation() {
+        if (labelDir && navLabelPath) {
+            navLabelPath.style.display = '';
+        }
+
+        // counter-input: focus → select, Enter → jump
+        if (progressText) {
+            progressText.addEventListener('focus', () => {
+                progressText.select();
+            });
+            progressText.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    jumpToIndex(progressText.value);
+                    progressText.blur();
+                }
+            });
+        }
+
+        // Click to copy path
+        if (navImgPath) navImgPath.onclick = () => copyPathToClipboard(navImgPath);
+        if (navLabelPath) navLabelPath.onclick = () => copyPathToClipboard(navLabelPath);
+    }
+
+    function jumpToIndex(val) {
+        let idx = parseInt(val, 10);
+        if (isNaN(idx)) return;
+        idx = idx - 1; // 1-based → 0-based
+        if (idx < 0) idx = 0;
+        if (idx >= total) idx = total - 1;
+        saveCurrent().then(() => loadIndex(idx));
+    }
+
+    function updateNavPaths() {
+        const relPath = images[currentIndex] || '';
+        if (navImgPath) {
+            navImgPath.innerHTML = `<b>IMG</b> ${relPath || '-'}`;
+            navImgPath.title = relPath || '';
+        }
+        if (labelDir && navLabelPath) {
+            const labelRelPath = relPath.replace(/\.[^.]+$/, '.txt');
+            navLabelPath.innerHTML = `<b>LBL</b> ${labelRelPath || '-'}`;
+            navLabelPath.title = labelRelPath || '';
+        }
+    }
+
+    function copyPathToClipboard(el) {
+        const text = el.textContent;
+        if (!text || text === '-') return;
+        navigator.clipboard.writeText(text).then(() => {
+            el.classList.add('copied');
+            setTimeout(() => el.classList.remove('copied'), 1000);
+        });
+    }
+
+    // --- Point Mode ---
+    function initPointMode() {
+        if (pointModeToggle) {
+            pointModeToggle.onchange = () => {
+                pointModeEnabled = pointModeToggle.checked;
+                if (pointOptions) pointOptions.classList.toggle('hidden', !pointModeEnabled);
+                if (container) container.classList.toggle('point-cursor', pointModeEnabled);
+            };
+        }
+        if (pointWSlider) {
+            pointWSlider.oninput = () => {
+                pointBoxW = parseFloat(pointWSlider.value);
+                if (pointWVal) pointWVal.textContent = pointBoxW.toFixed(2);
+                redraw();
+            };
+        }
+        if (pointHSlider) {
+            pointHSlider.oninput = () => {
+                pointBoxH = parseFloat(pointHSlider.value);
+                if (pointHVal) pointHVal.textContent = pointBoxH.toFixed(2);
+                redraw();
+            };
+        }
+    }
+
+    function getCSVClassForCurrentImage() {
+        if (!csvEnabled || Object.keys(csvData).length === 0) return null;
+        const relPath = images[currentIndex] || '';
+        const filename = relPath.split('/').pop().replace(/\.[^.]+$/, ''); // e.g. fall-01-cam0-rgb-005
+        // Extract sequence and frame: "fall-01-cam0-rgb-005" → seq="fall-01", frame=5
+        const match = filename.match(/^((?:fall|adl)-\d+).*?(\d+)$/);
+        if (!match) return null;
+        const seq = match[1];
+        const frame = parseInt(match[2], 10);
+        if (csvData[seq] && csvData[seq][frame] !== undefined) {
+            const label = csvData[seq][frame];
+            // -1 = not lying (class 0), 0 = falling (class 1), 1 = lying (class 2)
+            if (label === -1) return 0;
+            if (label === 0) return 1;
+            if (label === 1) return 2;
+        }
+        return null;
+    }
+
+    // --- CSV Mode ---
+    function initCSVMode() {
+        if (csvModeToggle) {
+            csvModeToggle.onchange = () => {
+                csvEnabled = csvModeToggle.checked;
+                if (csvOptions) csvOptions.classList.toggle('hidden', !csvEnabled);
+            };
+        }
+        if (csvLoadBtn) {
+            csvLoadBtn.onclick = async () => {
+                const csvPath = csvPathInput ? csvPathInput.value.trim() : '';
+                if (!csvPath) return;
+                csvLoadBtn.disabled = true;
+                csvLoadBtn.textContent = 'Loading...';
+                try {
+                    const res = await fetch(`/api/csv-labels?path=${encodeURIComponent(csvPath)}`);
+                    if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                    const result = await res.json();
+                    csvData = result.data;
+                    const count = Object.values(csvData).reduce((s, v) => s + Object.keys(v).length, 0);
+                    if (csvStatus) csvStatus.textContent = `Loaded: ${Object.keys(csvData).length} sequences, ${count} frames`;
+                } catch (e) {
+                    if (csvStatus) csvStatus.textContent = 'Error: ' + e.message;
+                } finally {
+                    csvLoadBtn.disabled = false;
+                    csvLoadBtn.textContent = 'Load CSV';
+                }
+            };
+        }
+    }
+
+    // --- Range Edit Mode ---
+    function initRangeMode() {
+        if (rangeStartBtn) {
+            rangeStartBtn.onclick = () => {
+                rangeStartIdx = currentIndex;
+                if (rangeSection) rangeSection.classList.add('range-active');
+                if (rangeApplyBtn) rangeApplyBtn.disabled = false;
+                if (rangeStatus) rangeStatus.textContent = `Start: #${currentIndex + 1} (${images[currentIndex]?.split('/').pop() || ''})`;
+            };
+        }
+        if (rangeApplyBtn) {
+            rangeApplyBtn.onclick = () => {
+                if (rangeStartIdx === -1) return;
+                const targetClass = parseInt(rangeClassInput?.value ?? '0', 10);
+                const startI = Math.min(rangeStartIdx, currentIndex);
+                const endI = Math.max(rangeStartIdx, currentIndex);
+
+                // Save current boxes first
+                annotations[images[currentIndex]] = JSON.parse(JSON.stringify(boxes));
+
+                let changed = 0;
+                for (let i = startI; i <= endI; i++) {
+                    const path = images[i];
+                    const ann = annotations[path];
+                    if (ann && ann.length > 0) {
+                        for (const box of ann) {
+                            box[0] = targetClass;
+                        }
+                        changed++;
+                    }
+                }
+
+                // Reload current image boxes from annotations
+                boxes = annotations[images[currentIndex]] ? JSON.parse(JSON.stringify(annotations[images[currentIndex]])) : [];
+
+                // Auto-save all changed labels if labelDir exists
+                if (labelDir) {
+                    for (let i = startI; i <= endI; i++) {
+                        const path = images[i];
+                        const ann = annotations[path];
+                        if (ann && ann.length > 0) {
+                            fetch('/api/annotate/save', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ label_dir: labelDir, rel_path: path, boxes: ann })
+                            });
+                        }
+                    }
+                }
+
+                // Reset range
+                rangeStartIdx = -1;
+                if (rangeSection) rangeSection.classList.remove('range-active');
+                if (rangeApplyBtn) rangeApplyBtn.disabled = true;
+                if (rangeStatus) rangeStatus.textContent = `Done: ${startI + 1}~${endI + 1} → class ${targetClass} (${changed} images)`;
+
+                updateBoxList();
+                redraw();
+            };
+        }
+    }
+
+    // --- Class Edit Helpers ---
+    function showClassEditToast(text) {
+        let toast = document.getElementById('class-edit-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'class-edit-toast';
+            toast.className = 'class-edit-toast';
+            container.appendChild(toast);
+        }
+        toast.textContent = text;
+        toast.style.display = 'block';
+    }
+
+    function hideClassEditToast() {
+        const toast = document.getElementById('class-edit-toast');
+        if (toast) toast.style.display = 'none';
+    }
+
+    function applyClassKeyBuffer() {
+        if (classKeyBuffer === '' || activeBoxIdx === -1) {
+            classKeyBuffer = '';
+            hideClassEditToast();
+            return;
+        }
+        const newCls = parseInt(classKeyBuffer, 10);
+        if (!isNaN(newCls) && newCls >= 0) {
+            pushHistory();
+            boxes[activeBoxIdx][0] = newCls;
+            saveCurrent();
+            updateBoxList();
+            redraw();
+        }
+        classKeyBuffer = '';
+        hideClassEditToast();
     }
 
     // --- AI Mode ---
+    async function loadModelOptions() {
+        if (!aiModelSelect) return;
+        try {
+            const res = await fetch('/api/models');
+            if (!res.ok) return;
+            const { models } = await res.json();
+            if (models.length === 0) return;
+            aiModelSelect.innerHTML = '';
+            for (const m of models) {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                aiModelSelect.appendChild(opt);
+            }
+        } catch (e) {
+            console.error('[AI] Failed to load models:', e);
+        }
+    }
+
     function initAIMode() {
-        console.log('[AI] initAIMode called');
-        console.log('[AI] aiModeToggle:', aiModeToggle);
-        console.log('[AI] aiOptions:', aiOptions);
-        console.log('[AI] detectCurrentBtn:', detectCurrentBtn);
-        
+        loadModelOptions();
+
         // Toggle AI Mode
         if (aiModeToggle) {
             aiModeToggle.onchange = () => {
@@ -389,20 +648,20 @@ window.openExportModal = () => {
         currentIndex = idx;
         const relPath = images[currentIndex];
         if (filenameDisplay) filenameDisplay.textContent = relPath;
-        if (progressText) progressText.textContent = `${currentIndex + 1} / ${total}`;
-        
+        if (progressText) progressText.value = `${currentIndex + 1} / ${total}`;
+        updateNavPaths();
+
         const url = new URL('/image', window.location.origin);
         url.searchParams.set('mode', 'folder');
         url.searchParams.set('rel_path', relPath);
         url.searchParams.set('img_dir', data.img_dir);
-        
+
         currentImage = new Image();
         currentImage.src = url.toString();
         currentImage.onload = async () => {
             fitImageToCanvas();
-            
+
             if (labelDir) {
-                // Label edit mode: load from file only on first visit
                 if (loadedFromFile.has(relPath)) {
                     boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
                 } else {
@@ -414,19 +673,19 @@ window.openExportModal = () => {
             } else {
                 const cachedAnnotations = annotations[relPath];
                 const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
-                
+
                 if (hasCachedAnnotations) {
                     boxes = JSON.parse(JSON.stringify(cachedAnnotations));
                 } else {
                     boxes = [];
                 }
             }
-            
+
             boxHistory = [];
             activeBoxIdx = -1;
             updateBoxList();
             redraw();
-            
+
             // Continue batch detection
             if (isBatchDetecting && aiModeEnabled) {
                 runDetection(true);
@@ -581,49 +840,43 @@ window.openExportModal = () => {
         currentIndex = idx;
         const relPath = images[currentIndex];
         if (filenameDisplay) filenameDisplay.textContent = relPath;
-        if (progressText) progressText.textContent = `${currentIndex + 1} / ${total}`;
+        if (progressText) progressText.value = `${currentIndex + 1} / ${total}`;
+        updateNavPaths();
 
         const url = new URL('/image', window.location.origin);
         url.searchParams.set('mode', 'folder');
         url.searchParams.set('rel_path', relPath);
         url.searchParams.set('img_dir', data.img_dir);
-        
+
         currentImage = new Image();
         currentImage.src = url.toString();
         currentImage.onload = async () => {
             fitImageToCanvas();
-            
+
             if (labelDir) {
-                // Label edit mode: load from file only on first visit, then use memory
                 if (loadedFromFile.has(relPath)) {
-                    // Already loaded - use annotations from memory (preserves edits)
                     boxes = annotations[relPath] ? JSON.parse(JSON.stringify(annotations[relPath])) : [];
                 } else {
-                    // First visit - load from file
                     const loadedLabels = await loadExistingLabels(relPath);
                     boxes = loadedLabels;
                     annotations[relPath] = JSON.parse(JSON.stringify(boxes));
                     loadedFromFile.add(relPath);
                 }
             } else {
-                // No labelDir: use cached annotations or empty
                 const cachedAnnotations = annotations[relPath];
                 const hasCachedAnnotations = cachedAnnotations && cachedAnnotations.length > 0;
-                
+
                 if (hasCachedAnnotations) {
                     boxes = JSON.parse(JSON.stringify(cachedAnnotations));
                 } else {
                     boxes = [];
                 }
             }
-            
+
             boxHistory = [];
             activeBoxIdx = -1;
             updateBoxList();
             redraw();
-            
-            // Note: Auto-detect is now handled by batch mode
-            // Manual navigation doesn't auto-detect anymore
         };
     }
     
@@ -808,8 +1061,8 @@ window.openExportModal = () => {
     // --- Event Listeners ---
     canvas.addEventListener('mousedown', (e) => {
         const { x, y } = getMousePos(e);
-        
-        // Resize
+
+        // Resize handle always takes priority (even in point mode)
         if (activeBoxIdx !== -1) {
             const handle = getHandle(activeBoxIdx, x, y);
             if (handle) {
@@ -842,7 +1095,22 @@ window.openExportModal = () => {
             return;
         }
 
-        // Draw
+        // Point Mode: create box on empty area click
+        if (pointModeEnabled) {
+            const n = toNorm(x, y);
+            if (n.x < 0 || n.x > 1 || n.y < 0 || n.y > 1) return;
+            pushHistory();
+            const csvClass = getCSVClassForCurrentImage();
+            const cls = csvClass !== null ? csvClass : (parseInt(classInput.value, 10) || 0);
+            boxes.push([cls, n.x, n.y, pointBoxW, pointBoxH]);
+            activeBoxIdx = boxes.length - 1;
+            saveCurrent();
+            updateBoxList();
+            redraw();
+            return;
+        }
+
+        // Draw (drag mode)
         pushHistory();
         activeBoxIdx = -1;
         isDrawing = true;
@@ -852,6 +1120,29 @@ window.openExportModal = () => {
 
     canvas.addEventListener('mousemove', (e) => {
         const { x, y } = getMousePos(e);
+
+        // Point Mode: draw crosshair + preview (only when not dragging/resizing)
+        if (pointModeEnabled && !isDragging && !isResizing) {
+            redraw();
+            const n = toNorm(x, y);
+            if (n.x >= 0 && n.x <= 1 && n.y >= 0 && n.y <= 1) {
+                const s = toScreen(n.x, n.y, pointBoxW, pointBoxH);
+                ctx.save();
+                ctx.setLineDash([4, 3]);
+                ctx.strokeStyle = 'rgba(245, 158, 11, 0.7)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(s.x, s.y, s.w, s.h);
+                ctx.setLineDash([]);
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x - 15, y); ctx.lineTo(x + 15, y);
+                ctx.moveTo(x, y - 15); ctx.lineTo(x, y + 15);
+                ctx.stroke();
+                ctx.restore();
+            }
+            return;
+        }
         const n = toNorm(x, y);
 
         // Cursor
@@ -973,36 +1264,73 @@ window.openExportModal = () => {
         redraw();
     });
 
+    // Wheel: adjust point mode box size
+    canvas.addEventListener('wheel', (e) => {
+        if (!pointModeEnabled) return;
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.01 : 0.01;
+        if (e.shiftKey) {
+            pointBoxH = Math.max(0.03, Math.min(0.8, pointBoxH + delta));
+            if (pointHSlider) pointHSlider.value = pointBoxH;
+            if (pointHVal) pointHVal.textContent = pointBoxH.toFixed(2);
+        } else {
+            pointBoxW = Math.max(0.03, Math.min(0.5, pointBoxW + delta));
+            if (pointWSlider) pointWSlider.value = pointBoxW;
+            if (pointWVal) pointWVal.textContent = pointBoxW.toFixed(2);
+        }
+    }, { passive: false });
+
     function updateBoxList() {
         if (!boxList) return;
         boxList.innerHTML = '';
+
+        // Update badge count
+        const boxCount = document.getElementById('box-count');
+        if (boxCount) boxCount.textContent = boxes.length;
+
         boxes.forEach((box, i) => {
             const li = document.createElement('li');
-            li.style.padding = '4px 8px';
-            li.style.border = '1px solid var(--border)';
-            li.style.marginBottom = '4px';
-            li.style.borderRadius = '4px';
-            li.style.cursor = 'pointer';
-            li.style.display = 'flex';
-            li.style.justifyContent = 'space-between';
-            
+            li.style.cssText = 'padding:3px 6px;border:1px solid var(--border);margin-bottom:3px;border-radius:4px;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:0.75rem;';
+
             if (i === activeBoxIdx) {
                 li.style.background = 'var(--accent)';
                 li.style.color = 'white';
             }
 
-            const text = document.createElement('span');
-            text.textContent = `Box #${i + 1} (Cls ${box[0]})`;
-            text.onclick = () => {
-                activeBoxIdx = i;
-                updateBoxList();
-                redraw();
+            // Label
+            const label = document.createElement('span');
+            label.textContent = `#${i + 1}`;
+            label.style.cssText = 'font-weight:600;font-size:0.7rem;min-width:24px;';
+            label.onclick = () => { activeBoxIdx = i; updateBoxList(); redraw(); };
+
+            // Class input
+            const clsInput = document.createElement('input');
+            clsInput.type = 'number';
+            clsInput.value = box[0];
+            clsInput.min = 0;
+            clsInput.style.cssText = 'width:42px;padding:2px 3px;background:var(--bg-primary);border:1px solid var(--border);color:white;border-radius:3px;font-size:0.7rem;text-align:center;';
+            clsInput.onclick = (e) => e.stopPropagation();
+            clsInput.onchange = (e) => {
+                e.stopPropagation();
+                const newCls = parseInt(clsInput.value, 10);
+                if (!isNaN(newCls) && newCls >= 0) {
+                    pushHistory();
+                    boxes[i][0] = newCls;
+                    saveCurrent();
+                    redraw();
+                }
             };
 
+            // Spacer
+            const spacer = document.createElement('span');
+            spacer.style.flex = '1';
+
+            // Delete button
             const delBtn = document.createElement('span');
             delBtn.textContent = '×';
-            delBtn.style.fontWeight = 'bold';
-            delBtn.style.cursor = 'pointer';
+            delBtn.style.cssText = 'font-weight:bold;cursor:pointer;font-size:0.9rem;opacity:0.6;';
+            delBtn.onmouseenter = () => { delBtn.style.opacity = '1'; delBtn.style.color = '#ef4444'; };
+            delBtn.onmouseleave = () => { delBtn.style.opacity = '0.6'; delBtn.style.color = ''; };
             delBtn.onclick = (e) => {
                 e.stopPropagation();
                 pushHistory();
@@ -1013,7 +1341,9 @@ window.openExportModal = () => {
                 redraw();
             };
 
-            li.appendChild(text);
+            li.appendChild(label);
+            li.appendChild(clsInput);
+            li.appendChild(spacer);
             li.appendChild(delBtn);
             boxList.appendChild(li);
         });
@@ -1137,8 +1467,25 @@ window.openExportModal = () => {
                 updateBoxList();
                 redraw();
             }
+        } else if (e.key === 'p' || e.key === 'P') {
+            if (pointModeToggle) {
+                pointModeToggle.checked = !pointModeToggle.checked;
+                pointModeToggle.onchange();
+            }
         } else if (e.key >= '0' && e.key <= '9') {
-            if (classInput) classInput.value = e.key;
+            if (activeBoxIdx !== -1) {
+                // Multi-digit class edit for selected box
+                classKeyBuffer += e.key;
+                showClassEditToast(`Class → ${classKeyBuffer}_`);
+                clearTimeout(classKeyTimer);
+                classKeyTimer = setTimeout(applyClassKeyBuffer, 800);
+            } else {
+                if (classInput) classInput.value = e.key;
+            }
+        } else if (e.key === 'Enter' && classKeyBuffer !== '') {
+            // Confirm class immediately
+            clearTimeout(classKeyTimer);
+            applyClassKeyBuffer();
         }
     });
 

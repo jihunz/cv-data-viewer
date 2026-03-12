@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import queue
 import re
+import threading
 import time
 import zipfile
 from dataclasses import dataclass
@@ -349,52 +351,87 @@ def annotate_page(
         {"request": request, "data_json": json.dumps(data)},
     )
 
+class _QueueFile:
+    """Non-seekable file-like object that pushes written data into a queue."""
+    def __init__(self, q: queue.Queue):
+        self._q = q
+        self._pos = 0
+
+    def write(self, data: bytes) -> int:
+        self._q.put(data)
+        self._pos += len(data)
+        return len(data)
+
+    def tell(self) -> int:
+        return self._pos
+
+    def seekable(self) -> bool:
+        return False
+
+    def flush(self) -> None:
+        pass
+
+
 @app.post("/api/export")
 def export_dataset(request: Request, payload: dict):
     img_dir = resolve_dataset_path(payload["img_dir"])
     target_w, target_h = payload["target_size"]
     annotations = payload["annotations"]
 
-    zip_buffer = io.BytesIO()
-    
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for rel_path, boxes in annotations.items():
-            try:
-                src_path = img_dir / rel_path # Simple join
-                if not src_path.exists():
-                    print(f"[WARN] Image not found: {src_path}")
-                    continue
-                    
-                with Image.open(src_path) as img:
-                    # Convert to RGB if RGBA
-                    if img.mode == 'RGBA':
-                        img = img.convert('RGB')
-                        
-                    resized = img.resize((target_w, target_h))
-                    img_bytes = io.BytesIO()
-                    fmt = img.format if img.format else "JPEG"
-                    resized.save(img_bytes, format=fmt, quality=95)
-                    
-                    out_name = Path(rel_path).with_suffix(".jpg").as_posix()
-                    zf.writestr(f"images/{out_name}", img_bytes.getvalue())
-            except Exception as e:
-                print(f"[EXPORT ERROR] {rel_path}: {e}")
-                continue
+    q: queue.Queue[bytes | None] = queue.Queue(maxsize=32)
 
-            label_content = []
-            for box in boxes:
-                line = f"{int(box[0])} {box[1]:.6f} {box[2]:.6f} {box[3]:.6f} {box[4]:.6f}"
-                label_content.append(line)
-            
-            label_rel = Path(rel_path).with_suffix(".txt").as_posix()
-            zf.writestr(f"labels/{label_rel}", "\n".join(label_content))
+    def _produce():
+        try:
+            qf = _QueueFile(q)
+            with zipfile.ZipFile(qf, "w", zipfile.ZIP_STORED) as zf:
+                for rel_path, boxes in annotations.items():
+                    try:
+                        src_path = img_dir / rel_path
+                        if not src_path.exists():
+                            print(f"[WARN] Image not found: {src_path}")
+                            continue
 
-    zip_buffer.seek(0)
+                        with Image.open(src_path) as img:
+                            if img.mode == 'RGBA':
+                                img = img.convert('RGB')
+                            resized = img.resize((target_w, target_h))
+                            img_bytes = io.BytesIO()
+                            fmt = img.format if img.format else "JPEG"
+                            resized.save(img_bytes, format=fmt, quality=95)
+
+                            out_name = Path(rel_path).with_suffix(".jpg").as_posix()
+                            zf.writestr(f"images/{out_name}", img_bytes.getvalue())
+                    except Exception as e:
+                        print(f"[EXPORT ERROR] {rel_path}: {e}")
+                        continue
+
+                    label_content = []
+                    for box in boxes:
+                        line = f"{int(box[0])} {box[1]:.6f} {box[2]:.6f} {box[3]:.6f} {box[4]:.6f}"
+                        label_content.append(line)
+
+                    label_rel = Path(rel_path).with_suffix(".txt").as_posix()
+                    zf.writestr(f"labels/{label_rel}", "\n".join(label_content))
+        except Exception as e:
+            print(f"[EXPORT FATAL] {e}")
+        finally:
+            q.put(None)  # sentinel
+
+    def _stream():
+        t = threading.Thread(target=_produce, daemon=True)
+        t.start()
+        while True:
+            chunk = q.get()
+            if chunk is None:
+                break
+            yield chunk
+        t.join()
+
     filename = f"dataset_{int(time.time())}.zip"
     return StreamingResponse(
-        zip_buffer,
+        _stream(),
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 @app.get("/viewer", response_class=HTMLResponse)
@@ -890,6 +927,36 @@ def browse_directory(path: str = Query("~")):
         "dirs": dirs,
         "files": files,
     })
+
+
+@app.get("/api/csv-labels")
+def load_csv_labels(path: str = Query(...)):
+    """Load CSV label file and return structured data for class auto-assignment."""
+    import csv
+    resolved = resolve_dataset_path(path)
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(404, f"File not found: {path}")
+
+    data: Dict[str, Dict[int, int]] = {}
+    try:
+        with open(resolved, newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row) < 3:
+                    continue
+                seq = row[0].strip()
+                try:
+                    frame = int(row[1])
+                    label = int(row[2])
+                except ValueError:
+                    continue
+                if seq not in data:
+                    data[seq] = {}
+                data[seq][frame] = label
+    except Exception as e:
+        raise HTTPException(500, f"Failed to parse CSV: {e}")
+
+    return JSONResponse({"data": data})
 
 
 @app.get("/api/models")
