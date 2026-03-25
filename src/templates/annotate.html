@@ -101,6 +101,15 @@
             user-select: none;
         }
 
+        .sb-icon {
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            opacity: 0.7;
+        }
+
+        .sb-section--accent-blue .sb-icon { color: #3b82f6; opacity: 1; }
+        .sb-section--accent-amber .sb-icon { color: #f59e0b; opacity: 1; }
+
         .sb-section-title {
             font-size: 0.7rem;
             font-weight: 700;
@@ -126,9 +135,6 @@
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), rgba(239, 68, 68, 0.04));
         }
 
-        .sb-section--accent-purple {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(168, 85, 247, 0.06));
-        }
 
         /* Field */
         .sb-field {
@@ -417,7 +423,7 @@
         }
 
         /* Range active */
-        .sb-section--accent-purple.range-active {
+        .sb-section.range-active {
             box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
         }
 
@@ -464,50 +470,10 @@
 
         <!-- Sidebar -->
         <aside class="ann-sidebar">
-            <!-- 1. Draw Mode -->
-            <div class="sb-section sb-section--accent-amber">
-                <div class="sb-section-header">
-                    <span class="sb-section-title">Draw Mode</span>
-                </div>
-                <div class="sb-section-body">
-                    <!-- Point Mode -->
-                    <label class="sb-toggle">
-                        <input type="checkbox" id="point-mode-toggle" />
-                        <span>Point Mode (P)</span>
-                    </label>
-                    <div id="point-options" class="sb-sub-options hidden">
-                        <div class="sb-field">
-                            <label class="sb-label">Width <span id="point-w-val">0.15</span></label>
-                            <input type="range" id="point-w" class="sb-slider" min="0.03" max="0.5" step="0.01" value="0.15" />
-                        </div>
-                        <div class="sb-field">
-                            <label class="sb-label">Height <span id="point-h-val">0.30</span></label>
-                            <input type="range" id="point-h" class="sb-slider" min="0.03" max="0.8" step="0.01" value="0.30" />
-                        </div>
-                        <small class="sb-hint">Wheel: Width / Shift+Wheel: Height</small>
-                    </div>
-
-                    <div class="sb-divider-thin"></div>
-
-                    <!-- CSV -->
-                    <label class="sb-toggle">
-                        <input type="checkbox" id="csv-mode-toggle" />
-                        <span>CSV Class Map</span>
-                    </label>
-                    <div id="csv-options" class="sb-sub-options hidden">
-                        <div class="sb-field">
-                            <label class="sb-label">CSV Path</label>
-                            <input type="text" id="csv-path" class="sb-input" placeholder="/path/to/file.csv" />
-                        </div>
-                        <button type="button" class="sb-btn sb-btn--primary" id="csv-load-btn">Load CSV</button>
-                        <small id="csv-status" class="sb-hint"></small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 2. AI Auto-Detect -->
+            <!-- 1. AI Auto-Detect (top priority) -->
             <div class="sb-section sb-section--accent-blue ai-mode-section">
                 <div class="sb-section-header">
+                    <svg class="sb-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1a1 1 0 0 0 1 1h1a4 4 0 0 1 0 8h-1a1 1 0 0 0-1 1v1a4 4 0 0 1-8 0v-1a1 1 0 0 0-1-1H6a4 4 0 0 1 0-8h1a1 1 0 0 0 1-1V6a4 4 0 0 1 4-4z"/><circle cx="12" cy="12" r="2"/></svg>
                     <span class="sb-section-title">AI Detect</span>
                     <span class="ai-status" id="ai-status"></span>
                 </div>
@@ -558,9 +524,52 @@
                 </div>
             </div>
 
+            <!-- 2. Draw Mode -->
+            <div class="sb-section sb-section--accent-amber">
+                <div class="sb-section-header">
+                    <svg class="sb-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    <span class="sb-section-title">Draw Mode</span>
+                </div>
+                <div class="sb-section-body">
+                    <!-- Point Mode -->
+                    <label class="sb-toggle">
+                        <input type="checkbox" id="point-mode-toggle" />
+                        <span>Point Mode (P)</span>
+                    </label>
+                    <div id="point-options" class="sb-sub-options hidden">
+                        <div class="sb-field">
+                            <label class="sb-label">Width <span id="point-w-val">0.15</span></label>
+                            <input type="range" id="point-w" class="sb-slider" min="0.03" max="0.5" step="0.01" value="0.15" />
+                        </div>
+                        <div class="sb-field">
+                            <label class="sb-label">Height <span id="point-h-val">0.30</span></label>
+                            <input type="range" id="point-h" class="sb-slider" min="0.03" max="0.8" step="0.01" value="0.30" />
+                        </div>
+                        <small class="sb-hint">Wheel: Width / Shift+Wheel: Height</small>
+                    </div>
+
+                    <div class="sb-divider-thin"></div>
+
+                    <!-- CSV -->
+                    <label class="sb-toggle">
+                        <input type="checkbox" id="csv-mode-toggle" />
+                        <span>CSV Class Map</span>
+                    </label>
+                    <div id="csv-options" class="sb-sub-options hidden">
+                        <div class="sb-field">
+                            <label class="sb-label">CSV Path</label>
+                            <input type="text" id="csv-path" class="sb-input" placeholder="/path/to/file.csv" />
+                        </div>
+                        <button type="button" class="sb-btn sb-btn--primary" id="csv-load-btn">Load CSV</button>
+                        <small id="csv-status" class="sb-hint"></small>
+                    </div>
+                </div>
+            </div>
+
             <!-- 3. Class & Boxes -->
             <div class="sb-section">
                 <div class="sb-section-header">
+                    <svg class="sb-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span class="sb-section-title">Class & Boxes</span>
                 </div>
                 <div class="sb-section-body">
@@ -570,11 +579,6 @@
                         <small class="sb-hint">선택된 박스: 숫자키로 클래스 변경</small>
                     </div>
 
-                    <label class="sb-toggle">
-                        <input type="checkbox" id="auto-copy" checked />
-                        <span>Copy boxes to next image</span>
-                    </label>
-
                     <!-- Box List -->
                     <div class="sb-field">
                         <label class="sb-label">Boxes <span class="sb-badge" id="box-count">0</span></label>
@@ -582,22 +586,23 @@
                             <!-- Dynamic List -->
                         </ul>
                     </div>
-                </div>
-            </div>
 
-            <!-- 4. Range Edit -->
-            <div class="sb-section sb-section--accent-purple">
-                <div class="sb-section-header">
-                    <span class="sb-section-title">Range Edit</span>
-                </div>
-                <div class="sb-section-body">
-                    <div class="sb-field">
-                        <label class="sb-label">Target Class</label>
-                        <input type="number" id="range-class" class="sb-input sb-input--narrow" value="0" min="0" />
-                    </div>
+                    <div class="sb-divider-thin"></div>
+
+                    <!-- Copy boxes -->
+                    <label class="sb-toggle">
+                        <input type="checkbox" id="auto-copy" />
+                        <span>Copy boxes to next image</span>
+                    </label>
+
+                    <div class="sb-divider-thin"></div>
+
+                    <!-- Range Edit (sub-section) -->
+                    <label class="sb-label">Range Edit</label>
                     <div class="sb-btn-row">
+                        <input type="text" id="range-class" class="sb-input" value="0" style="width:48px; text-align:center;" placeholder="cls" />
                         <button class="sb-btn" id="range-start-btn">Mark Start</button>
-                        <button class="sb-btn sb-btn--primary" id="range-apply-btn" disabled>Apply Range</button>
+                        <button class="sb-btn sb-btn--primary" id="range-apply-btn" disabled>Apply</button>
                     </div>
                     <small id="range-status" class="sb-hint"></small>
                 </div>
@@ -810,7 +815,7 @@
             }
         }
     </script>
-    <script src="/static/annotator.js?v=16"></script>
+    <script src="/static/annotator.js?v=18"></script>
 </body>
 </html>
 

@@ -348,12 +348,7 @@
         }
     }
     if (selectedCountEl) {
-        selectedCountEl.textContent = selectedSet.size;
-    }
-    
-    if (excludeBtn) {
-        excludeBtn.style.opacity = selectedSet.size > 0 ? '1' : '0.5';
-        excludeBtn.style.cursor = selectedSet.size > 0 ? 'pointer' : 'not-allowed';
+        selectedCountEl.textContent = excludedSet.size;
     }
     updateMarkUI();
   }
@@ -573,9 +568,9 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'grid-item';
     
-    // Apply selection state
-    if (selectedSet.has(entry.rel_path)) {
-      wrapper.classList.add('selected');
+    // Apply excluded state
+    if (excludedSet.has(entry.rel_path)) {
+      wrapper.classList.add('excluded');
     }
 
     // Apply Search Highlight state
@@ -627,16 +622,9 @@
       }
     };
 
-    // Interaction
+    // Interaction: 클릭 시 즉시 exclude 토글
     wrapper.addEventListener('click', () => {
-      if (selectedSet.has(entry.rel_path)) {
-        selectedSet.delete(entry.rel_path);
-        wrapper.classList.remove('selected');
-      } else {
-        selectedSet.add(entry.rel_path);
-        wrapper.classList.add('selected');
-      }
-      updateCounter();
+      toggleExclude(entry.rel_path);
     });
 
     return wrapper;
@@ -768,16 +756,12 @@
   function nextBatch() {
     if (currentIndex + BATCH_SIZE >= total) return; // End reached
     currentIndex += BATCH_SIZE;
-    selectedSet.clear(); // Clear selection on move? Usually better UX to clear.
-    // Don't clear search highlight if user just moves page, but maybe we should?
-    // Let's keep highlight until new search or refresh.
     renderGrid();
   }
 
   function prevBatch() {
     if (currentIndex - BATCH_SIZE < 0) currentIndex = 0;
     else currentIndex -= BATCH_SIZE;
-    selectedSet.clear();
     renderGrid();
   }
 
@@ -894,26 +878,21 @@
     }
   }
 
-  function excludeSelected() {
-    if (selectedSet.size === 0) return;
-    
-    let count = 0;
-    selectedSet.forEach(relPath => {
-      if (!excludedSet.has(relPath)) {
-        excludedSet.set(relPath, { image: relPath, reason: 'User Selection' });
-        count++;
-      }
-    });
-
-    selectedSet.clear();
-    showToast(`Excluded ${count} images`);
+  function toggleExclude(relPath) {
+    if (excludedSet.has(relPath)) {
+      excludedSet.delete(relPath);
+    } else {
+      excludedSet.set(relPath, { image: relPath, reason: 'User Selection' });
+    }
     updateCounter();
-    
-    // Visually update current grid
-    const items = gridContainer.querySelectorAll('.grid-item');
-    items.forEach(item => {
-        item.classList.remove('selected');
-    });
+    renderGrid();
+  }
+
+  function toggleExcludeBySlot(slotIndex) {
+    const globalIndex = currentIndex + slotIndex;
+    if (globalIndex >= total) return;
+    const entry = images[globalIndex];
+    if (entry) toggleExclude(entry.rel_path);
   }
 
   function exportExcluded() {
@@ -922,14 +901,20 @@
       return;
     }
     const lines = Array.from(excludedSet.values()).map((item) => `${item.image}`);
-    const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+    const content = lines.join('\n') + '\n';
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = 'excluded_list.txt';
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    showToast('Exported exclusion list');
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+    showToast(`Exported ${excludedSet.size} excluded images`);
   }
 
   // -- Marking --
@@ -1014,8 +999,7 @@
       }
     });
   }
-  excludeBtn.addEventListener('click', excludeSelected);
-  exportBtn.addEventListener('click', exportExcluded);
+  if (exportBtn) exportBtn.addEventListener('click', exportExcluded);
   
   // Search listener
   if (searchInput) {
@@ -1049,6 +1033,12 @@
       return;
     }
 
+    // 1,2,3,4: toggle exclude (좌상=1, 우상=2, 좌하=3, 우하=4)
+    if (['1','2','3','4'].includes(ev.key)) {
+      toggleExcludeBySlot(parseInt(ev.key) - 1);
+      return;
+    }
+
     if (isCompareMode && ev.key === 'c' && (ev.ctrlKey || ev.metaKey)) {
       ev.preventDefault();
       if (typeof copyCompareToClipboard === 'function') copyCompareToClipboard();
@@ -1067,11 +1057,6 @@
     } else if (ev.key === 'ArrowDown') {
         stopAuto();
         goToLast();
-    } else if (ev.key === ' ' || ev.key === 'Enter') {
-      if (ev.key === 'Enter') {
-      ev.preventDefault();
-          excludeSelected();
-      }
     }
   });
 

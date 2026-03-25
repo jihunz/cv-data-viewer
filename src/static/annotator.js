@@ -106,7 +106,7 @@ window.openExportModal = () => {
     const rangeStartBtn = document.getElementById('range-start-btn');
     const rangeApplyBtn = document.getElementById('range-apply-btn');
     const rangeStatus = document.getElementById('range-status');
-    const rangeSection = document.querySelector('.sb-section--accent-purple');
+    const rangeSection = rangeStartBtn ? rangeStartBtn.closest('.sb-section') : null;
     let rangeStartIdx = -1;
 
     // Class edit via keyboard (multi-digit with debounce)
@@ -125,6 +125,11 @@ window.openExportModal = () => {
     async function init() {
         // Initialize Navigation
         initNavigation();
+
+        // Uncheck auto-copy when label directory is loaded (existing labels present)
+        if (labelDir && autoCopyCheck) {
+            autoCopyCheck.checked = false;
+        }
 
         if (total > 0) await loadIndex(0);
         window.addEventListener('resize', () => {

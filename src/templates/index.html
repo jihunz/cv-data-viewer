@@ -331,7 +331,7 @@
                     folderFields.forEach(el => el.classList.remove('hidden'));
                     if (sharedLabelField) sharedLabelField.classList.remove('hidden');
                     imgDirInput.disabled = false; imgDirInput.required = true;
-                    labelDirInput.disabled = false; labelDirInput.required = true;
+                    labelDirInput.disabled = false; labelDirInput.required = false;
                 } else if (mode === 'annotate') {
                     folderFields.forEach(el => {
                         if (el.querySelector('input[name="img_dir"]')) el.classList.remove('hidden');
@@ -370,30 +370,20 @@
             const labelDir = labelDirInput.value.trim();
             const gtLabelDir = form.querySelector('input[name="gt_label_dir"]') ? form.querySelector('input[name="gt_label_dir"]').value.trim() : '';
 
-            // Dataset dir mode: resolve to images/ labels/ paths
+            // Dataset dir mode: send dataset_dir, server auto-detects images/ labels/
             if ((mode === 'folder' || mode === 'annotate') && currentPathType === 'dataset') {
                 const dsDir = datasetDirInput.value.trim();
                 if (!dsDir) { showToast('데이터셋 디렉터리를 입력해주세요', 'error'); return; }
-                const dsImgDir = dsDir + '/images';
-                const dsLabelDir = dsDir + '/labels';
                 if (mode === 'annotate') {
                     const params = new URLSearchParams();
-                    params.set('img_dir', dsImgDir);
-                    params.set('label_dir', dsLabelDir);
+                    params.set('dataset_dir', dsDir);
                     window.location.href = `/annotate?${params.toString()}`;
                     return;
                 }
-                // folder view: override values and continue as folder mode
-                imgDirInput.value = dsImgDir;
-                labelDirInput.value = dsLabelDir;
-                // Re-read overridden values
-                const imgDir2 = dsImgDir;
-                const labelDir2 = dsLabelDir;
                 overlay.classList.remove('hidden');
                 const dsParams = new URLSearchParams();
                 dsParams.set('mode', 'folder');
-                dsParams.set('img_dir', imgDir2);
-                dsParams.set('label_dir', labelDir2);
+                dsParams.set('dataset_dir', dsDir);
                 eventSource = new EventSource(`/api/progress?${dsParams.toString()}`);
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);
@@ -422,7 +412,6 @@
 
             if (mode === 'folder') {
                 if (!imgDir) { showToast('Image directory is required for folder mode', 'error'); return; }
-                if (!labelDir) { showToast('Label directory is required for folder mode', 'error'); return; }
             }
 
             if (mode === 'annotate') {

@@ -529,6 +529,24 @@ input[type="text"]:focus {
   z-index: 20;
 }
 
+.grid-item.excluded {
+  border-color: var(--danger);
+}
+
+.grid-item.excluded::before {
+  content: 'EXCLUDED';
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: var(--danger);
+  color: white;
+  font-weight: bold;
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  z-index: 20;
+}
+
 .grid-image {
   width: 100%;
   height: 100%;

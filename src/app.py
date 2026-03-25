@@ -268,7 +268,7 @@ def get_train_entry_by_rel(train_file_path: Path, label_dir_path: Optional[Path]
     _, _, mapping = cached
     return mapping.get(rel_path)
 
-def list_images(img_dir: Path, label_dir: Path) -> List[str]:
+def list_images(img_dir: Path, label_dir: Optional[Path] = None) -> List[str]:
     if not img_dir.exists():
         return []
 
@@ -277,6 +277,9 @@ def list_images(img_dir: Path, label_dir: Path) -> List[str]:
     all_imgs.extend(depth_one)
     for subdir in sorted(p for p in img_dir.iterdir() if p.is_dir()):
         all_imgs.extend(sorted(p for p in subdir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS))
+
+    if not label_dir or not label_dir.exists():
+        return [str(p.relative_to(img_dir)) for p in all_imgs]
 
     # 1단계: 정확 매칭
     images: List[str] = []
@@ -292,10 +295,27 @@ def list_images(img_dir: Path, label_dir: Path) -> List[str]:
         rel = img_path.relative_to(img_dir)
         if _find_fuzzy_label(label_dir, rel):
             images.append(str(rel))
-    return images
+    if images:
+        return images
+
+    # 3단계: 라벨 매칭 실패 시 전체 이미지 반환 (라벨 없이 보기)
+    return [str(p.relative_to(img_dir)) for p in all_imgs]
 
 def collect_images(img_dir: Path, label_dir: Path) -> List[str]:
     return list_images(img_dir, label_dir)
+
+def resolve_dataset_dir(dataset_dir: str) -> Tuple[Path, Optional[Path]]:
+    """데이터셋 디렉터리에서 img_dir, label_dir 자동 감지.
+    images/ 하위 폴더가 있으면 사용, 없으면 루트를 img_dir로.
+    labels/ 하위 폴더가 있으면 사용, 없으면 None.
+    """
+    base = resolve_dataset_path(dataset_dir)
+    img_dir = base / "images"
+    label_dir = base / "labels"
+    if not img_dir.is_dir():
+        img_dir = base
+    label_dir = label_dir if label_dir.is_dir() else None
+    return img_dir, label_dir
 
 def safe_join(base: Path, rel: str) -> Path:
     candidate = (base / rel).resolve()
@@ -313,9 +333,17 @@ def index(request: Request):
 @app.get("/annotate", response_class=HTMLResponse)
 def annotate_page(
     request: Request,
-    img_dir: str = Query(..., description="Path to image directory"),
+    dataset_dir: Optional[str] = Query(None),
+    img_dir: Optional[str] = Query(None, description="Path to image directory"),
     label_dir: Optional[str] = Query(None, description="Path to label directory (optional, for loading existing labels)"),
 ):
+    if dataset_dir and not img_dir:
+        _img, _lbl = resolve_dataset_dir(dataset_dir)
+        img_dir = str(_img)
+        if _lbl and not label_dir:
+            label_dir = str(_lbl)
+    if not img_dir:
+        raise HTTPException(status_code=400, detail="img_dir or dataset_dir required")
     print(f"[DEBUG] Annotate request for: {img_dir}, label_dir: {label_dir}")
     img_dir_path = resolve_dataset_path(img_dir)
     print(f"[DEBUG] Resolved path: {img_dir_path}, Is Dir: {img_dir_path.is_dir()}")
@@ -438,6 +466,7 @@ def export_dataset(request: Request, payload: dict):
 def viewer(
     request: Request,
     mode: str = Query("folder"),
+    dataset_dir: Optional[str] = Query(None),
     img_dir: Optional[str] = Query(None),
     train_file: Optional[str] = Query(None),
     label_dir: Optional[str] = Query(None),
@@ -450,16 +479,22 @@ def viewer(
     if mode not in DATASET_MODES:
         raise HTTPException(status_code=400, detail="Invalid dataset mode")
 
+    # dataset_dir 자동 감지: images/, labels/ 하위 폴더 유무 판단
+    if dataset_dir and not img_dir:
+        _img, _lbl = resolve_dataset_dir(dataset_dir)
+        img_dir = str(_img)
+        if _lbl and not label_dir:
+            label_dir = str(_lbl)
+
     prefill: Dict[str, Optional[str]] = {"mode": mode}
     if label_dir:
         prefill["label_dir"] = label_dir
 
-    # For folder mode, label_dir is required. For txt mode, it's optional (auto-mapping available)
     label_dir_path: Optional[Path] = None
     if label_dir:
         label_dir_path = resolve_dataset_path(label_dir)
         if not label_dir_path.exists():
-            return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": f"Invalid label directory: {label_dir}", "prefill": prefill}, status_code=400)
+            label_dir_path = None
 
     if mode == "compare":
         eff_pred_a = pred_label_dir_a or pred_label_dir
@@ -526,8 +561,6 @@ def viewer(
         return TEMPLATES.TemplateResponse("viewer.html", {"request": request, "data_json": json.dumps(view_data)})
 
     if mode == "folder":
-        if not label_dir:
-            return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Label directory is required for folder mode.", "prefill": prefill}, status_code=400)
         prefill["img_dir"] = img_dir
         if not img_dir:
             return TEMPLATES.TemplateResponse("index.html", {"request": request, "error": "Image directory required", "prefill": prefill}, status_code=400)
@@ -544,7 +577,7 @@ def viewer(
             "mode": mode,
             "images": [{"rel_path": rel} for rel in images],
             "img_dir": str(img_dir_path.resolve()),
-            "label_dir": str(label_dir_path.resolve()),
+            "label_dir": str(label_dir_path.resolve()) if label_dir_path else None,
             "train_file": None,
         }
     else: # txt
@@ -973,6 +1006,7 @@ def list_models():
 @app.get("/api/progress")
 def scan_progress(
     mode: str = Query("folder"),
+    dataset_dir: Optional[str] = Query(None),
     img_dir: Optional[str] = Query(None),
     label_dir: Optional[str] = Query(None),
     train_file: Optional[str] = Query(None),
@@ -981,6 +1015,13 @@ def scan_progress(
     pred_label_dir_b: Optional[str] = Query(None),
     gt_label_dir: Optional[str] = Query(None),
 ):
+    # dataset_dir 자동 감지
+    if dataset_dir and not img_dir:
+        _img, _lbl = resolve_dataset_dir(dataset_dir)
+        img_dir = str(_img)
+        if _lbl and not label_dir:
+            label_dir = str(_lbl)
+
     def event_stream():
         if mode == "compare":
             eff_pred_a = pred_label_dir_a or pred_label_dir
@@ -999,14 +1040,16 @@ def scan_progress(
                     if (gt_path / Path(rel).with_suffix(LABEL_EXT)).is_file():
                         images.append(rel)
         elif mode == "folder":
-            if not img_dir or not label_dir:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing args'})}\n\n"
+            if not img_dir:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing img_dir'})}\n\n"
                 return
             img_path = resolve_dataset_path(img_dir)
-            lbl_path = resolve_dataset_path(label_dir)
-            if not img_path.exists() or not lbl_path.exists():
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Invalid paths'})}\n\n"
+            if not img_path.exists():
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Invalid image directory'})}\n\n"
                 return
+            lbl_path = resolve_dataset_path(label_dir) if label_dir else None
+            if lbl_path and not lbl_path.exists():
+                lbl_path = None
             images = list_images(img_path, lbl_path)
         else:
             if not train_file:
