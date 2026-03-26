@@ -6,6 +6,7 @@ services:
       - "8888:8000"
     volumes:
       - .:/app
-      - /Users/jihunjang:/host
+#      - /Users/jihunjang:/host
+      - /Users/Administrator/Downloads:/host
     environment:
       - PYTHONPATH=/app
