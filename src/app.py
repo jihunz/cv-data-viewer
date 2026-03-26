@@ -1050,73 +1050,98 @@ def scan_progress(
         if _lbl and not label_dir:
             label_dir = str(_lbl)
 
-    def event_stream():
-        if mode == "compare":
-            eff_pred_a = pred_label_dir_a or pred_label_dir
-            if not img_dir or not eff_pred_a or not gt_label_dir:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing args for compare mode'})}\n\n"
-                return
-            img_path = resolve_dataset_path(img_dir)
-            gt_path = resolve_dataset_path(gt_label_dir)
-            if not img_path.exists() or not gt_path.exists():
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Invalid paths'})}\n\n"
-                return
-            images = []
-            for p in sorted(img_path.rglob("*")):
-                if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+    def _scan_worker(q: queue.Queue):
+        """별도 스레드에서 파일 탐색 후 큐로 결과 전달 (진행률 포함)"""
+        try:
+            if mode == "compare":
+                eff_pred_a = pred_label_dir_a or pred_label_dir
+                if not img_dir or not eff_pred_a or not gt_label_dir:
+                    q.put({"status": "error", "message": "Missing args for compare mode"}); return
+                img_path = resolve_dataset_path(img_dir)
+                gt_path = resolve_dataset_path(gt_label_dir)
+                if not img_path.exists() or not gt_path.exists():
+                    q.put({"status": "error", "message": "Invalid paths"}); return
+                # 1단계: 파일 목록 수집
+                q.put({"status": "progress", "progress": 10})
+                all_files = sorted(p for p in img_path.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+                q.put({"status": "progress", "progress": 50})
+                # 2단계: 라벨 매칭
+                images = []
+                total_f = len(all_files)
+                for i, p in enumerate(all_files):
                     rel = p.relative_to(img_path).as_posix()
                     if (gt_path / Path(rel).with_suffix(LABEL_EXT)).is_file():
                         images.append(rel)
-        elif mode == "folder":
-            if not img_dir:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing img_dir'})}\n\n"
-                return
-            img_path = resolve_dataset_path(img_dir)
-            if not img_path.exists():
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Invalid image directory'})}\n\n"
-                return
-            lbl_path = resolve_dataset_path(label_dir) if label_dir else None
-            if lbl_path and not lbl_path.exists():
-                lbl_path = None
-            images = list_images(img_path, lbl_path)
-        else:
-            if not train_file:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Missing train file'})}\n\n"
-                return
-            tf_path = resolve_dataset_path(train_file)
-            if not tf_path.exists():
-                yield f"data: {json.dumps({'status': 'error', 'message': f'Train file not found: {train_file}'})}\n\n"
-                return
-            ld_path = resolve_dataset_path(label_dir) if label_dir else None
+                    if total_f > 0 and (i + 1) % max(1, total_f // 10) == 0:
+                        q.put({"status": "progress", "progress": 50 + (i + 1) * 50 // total_f})
+            elif mode == "folder":
+                if not img_dir:
+                    q.put({"status": "error", "message": "Missing img_dir"}); return
+                img_path = resolve_dataset_path(img_dir)
+                if not img_path.exists():
+                    q.put({"status": "error", "message": "Invalid image directory"}); return
+                lbl_path = resolve_dataset_path(label_dir) if label_dir else None
+                if lbl_path and not lbl_path.exists():
+                    lbl_path = None
+                q.put({"status": "progress", "progress": 20})
+                images = list_images(img_path, lbl_path)
+            else:
+                if not train_file:
+                    q.put({"status": "error", "message": "Missing train file"}); return
+                tf_path = resolve_dataset_path(train_file)
+                if not tf_path.exists():
+                    q.put({"status": "error", "message": f"Train file not found: {train_file}"}); return
+                ld_path = resolve_dataset_path(label_dir) if label_dir else None
+                q.put({"status": "progress", "progress": 20})
+                try:
+                    entries = load_train_entries(tf_path, ld_path)
+                except Exception as e:
+                    q.put({"status": "error", "message": f"Failed to load train file: {str(e)}"}); return
+                images = [e.rel_path for e in entries]
+
+            q.put({"status": "progress", "progress": 100})
+            q.put({"status": "result", "images": images})
+        except Exception as e:
+            q.put({"status": "error", "message": str(e)})
+
+    def event_stream():
+        q_progress: queue.Queue = queue.Queue()
+        worker = threading.Thread(target=_scan_worker, args=(q_progress,), daemon=True)
+        worker.start()
+
+        while True:
             try:
-                entries = load_train_entries(tf_path, ld_path)
-            except Exception as e:
-                yield f"data: {json.dumps({'status': 'error', 'message': f'Failed to load train file: {str(e)}'})}\n\n"
+                msg = q_progress.get(timeout=30)
+            except Exception:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Scan timeout'})}\n\n"
                 return
-            images = [e.rel_path for e in entries]
 
-        total = len(images)
-        if total == 0:
-            yield f"data: {json.dumps({'status': 'error', 'message': 'No images found'})}\n\n"
-            return
+            if msg["status"] == "error":
+                yield f"data: {json.dumps(msg)}\n\n"
+                return
+            elif msg["status"] == "progress":
+                yield f"data: {json.dumps({'status': 'progress', 'progress': msg['progress'], 'eta': 0})}\n\n"
+            elif msg["status"] == "result":
+                images = msg["images"]
+                if not images:
+                    yield f"data: {json.dumps({'status': 'error', 'message': 'No images found'})}\n\n"
+                    return
 
-        # Fast progress simulation since list is already loaded
-        yield f"data: {json.dumps({'status': 'progress', 'progress': 100, 'eta': 0})}\n\n"
+                params = [("mode", mode)]
+                if mode == "compare":
+                    eff_pred_a = pred_label_dir_a or pred_label_dir
+                    params.extend([("img_dir", img_dir), ("pred_label_dir_a", eff_pred_a), ("gt_label_dir", gt_label_dir)])
+                    if pred_label_dir_b:
+                        params.append(("pred_label_dir_b", pred_label_dir_b))
+                elif mode == "folder":
+                    params.extend([("label_dir", label_dir), ("img_dir", img_dir)])
+                else:
+                    if label_dir: params.append(("label_dir", label_dir))
+                    params.append(("train_file", train_file))
 
-        params = [("mode", mode)]
-        if mode == "compare":
-            eff_pred_a = pred_label_dir_a or pred_label_dir
-            params.extend([("img_dir", img_dir), ("pred_label_dir_a", eff_pred_a), ("gt_label_dir", gt_label_dir)])
-            if pred_label_dir_b:
-                params.append(("pred_label_dir_b", pred_label_dir_b))
-        elif mode == "folder":
-            params.extend([("label_dir", label_dir), ("img_dir", img_dir)])
-        else:
-            if label_dir: params.append(("label_dir", label_dir))
-            params.append(("train_file", train_file))
-        
-        q = "&".join(f"{k}={quote(v, safe='')}" for k, v in params if v)
-        yield f"data: {json.dumps({'status': 'done', 'viewer_url': f'/viewer?{q}'})}\n\n"
+                url_q = "&".join(f"{k}={quote(v, safe='')}" for k, v in params if v)
+                yield f"data: {json.dumps({'status': 'done', 'viewer_url': f'/viewer?{url_q}'})}\n\n"
+                return
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
