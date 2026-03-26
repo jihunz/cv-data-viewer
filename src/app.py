@@ -1237,8 +1237,38 @@ def scan_progress(
                 lbl_path = resolve_dataset_path(label_dir) if label_dir else None
                 if lbl_path and not lbl_path.exists():
                     lbl_path = None
-                q.put({"status": "progress", "progress": 20})
-                images = list_images(img_path, lbl_path)
+                q.put({"status": "progress", "progress": 10})
+                # 파일 목록 수집 (중간 진행률 전송)
+                files: List[Path] = []
+                subdirs_list: List[Path] = []
+                for p in img_path.iterdir():
+                    if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+                        files.append(p)
+                    elif p.is_dir():
+                        subdirs_list.append(p)
+                q.put({"status": "progress", "progress": 30})
+                all_imgs = sorted(files)
+                total_subs = len(subdirs_list)
+                for si, subdir in enumerate(sorted(subdirs_list)):
+                    all_imgs.extend(sorted(p for p in subdir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS))
+                    if total_subs > 0 and (si + 1) % max(1, total_subs // 5) == 0:
+                        q.put({"status": "progress", "progress": 30 + (si + 1) * 40 // total_subs})
+                q.put({"status": "progress", "progress": 70})
+                if not lbl_path or not lbl_path.exists():
+                    images = [str(p.relative_to(img_path)) for p in all_imgs]
+                else:
+                    images = []
+                    for img_p in all_imgs:
+                        rel = img_p.relative_to(img_path)
+                        if (lbl_path / rel.with_suffix(LABEL_EXT)).is_file():
+                            images.append(str(rel))
+                    if not images:
+                        for img_p in all_imgs:
+                            rel = img_p.relative_to(img_path)
+                            if _find_fuzzy_label(lbl_path, rel):
+                                images.append(str(rel))
+                    if not images:
+                        images = [str(p.relative_to(img_path)) for p in all_imgs]
             else:
                 if not train_file:
                     q.put({"status": "error", "message": "Missing train file"}); return
@@ -1265,7 +1295,7 @@ def scan_progress(
 
         while True:
             try:
-                msg = q_progress.get(timeout=30)
+                msg = q_progress.get(timeout=300)
             except Exception:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Scan timeout'})}\n\n"
                 return
