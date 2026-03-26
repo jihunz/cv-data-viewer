@@ -33,6 +33,12 @@
   let showPredA = true;
   let showPredB = true;
 
+  // --- Performance: Image & Label caches ---
+  const _imgCache = new Map();       // url -> HTMLImageElement (LRU, max 120)
+  const _IMG_CACHE_MAX = 120;
+  const _labelCache = new Map();     // rel_path -> Promise<data>
+  let _prefetchAbort = null;         // AbortController for prefetch
+
   // Search State
   let lastQuery = "";
   let searchResults = [];
@@ -391,6 +397,41 @@
     return res.json();
   }
 
+  // --- Performance helpers ---
+  function _buildImageUrl(relPath) {
+    const url = new URL('/thumbnail', window.location.origin);
+    url.searchParams.set('mode', mode);
+    url.searchParams.set('rel_path', relPath);
+    url.searchParams.set('w', '800');
+    if ((mode === 'folder' || mode === 'compare') && data.img_dir) {
+      url.searchParams.set('img_dir', data.img_dir);
+    } else if (mode === 'txt' && data.train_file) {
+      url.searchParams.set('train_file', data.train_file);
+      if (data.label_dir) url.searchParams.set('label_dir', data.label_dir);
+    }
+    return url.toString();
+  }
+
+  function _imgCachePut(url, imgEl) {
+    if (_imgCache.size >= _IMG_CACHE_MAX) {
+      const oldest = _imgCache.keys().next().value;
+      _imgCache.delete(oldest);
+    }
+    _imgCache.set(url, imgEl);
+  }
+
+  function _fetchLabelsWithCache(relPath) {
+    if (_labelCache.has(relPath)) return _labelCache.get(relPath);
+    const p = fetchLabels(relPath);
+    _labelCache.set(relPath, p);
+    // 캐시 크기 제한
+    if (_labelCache.size > 200) {
+      const oldest = _labelCache.keys().next().value;
+      _labelCache.delete(oldest);
+    }
+    return p;
+  }
+
   function colorForClass(cls) {
     const hue = (cls * 47) % 360;
     return {
@@ -578,21 +619,17 @@
         wrapper.classList.add('highlighted');
     }
 
-    // Image
+    // Image (썸네일 사용 + 메모리 캐시)
     const img = document.createElement('img');
     img.className = 'grid-image';
-    img.loading = 'lazy';
 
-    const imgUrl = new URL('/image', window.location.origin);
-    imgUrl.searchParams.set('mode', mode);
-    imgUrl.searchParams.set('rel_path', entry.rel_path);
-    if ((mode === 'folder' || mode === 'compare') && data.img_dir) {
-      imgUrl.searchParams.set('img_dir', data.img_dir);
-    } else if (mode === 'txt' && data.train_file) {
-      imgUrl.searchParams.set('train_file', data.train_file);
-      if (data.label_dir) imgUrl.searchParams.set('label_dir', data.label_dir);
+    const imgUrl = _buildImageUrl(entry.rel_path);
+    const cachedImg = _imgCache.get(imgUrl);
+    if (cachedImg && cachedImg.complete) {
+      img.src = cachedImg.src;
+    } else {
+      img.src = imgUrl;
     }
-    img.src = imgUrl.toString();
 
     // Canvas Overlay
     const canvas = document.createElement('canvas');
@@ -609,14 +646,17 @@
 
     img.decoding = 'async';
     img.onload = () => {
+      // 캐시에 저장
+      _imgCachePut(imgUrl, img);
+
       canvas.width = img.clientWidth;
       canvas.height = img.clientHeight;
 
       if (!isCompareMode) {
-        fetchLabels(entry.rel_path)
-          .then(data => {
-            wrapper.dataset.labelPath = data.label;
-            drawBoxes(canvas, data.labels, img);
+        _fetchLabelsWithCache(entry.rel_path)
+          .then(d => {
+            wrapper.dataset.labelPath = d.label;
+            drawBoxes(canvas, d.labels, img);
           })
           .catch(() => {});
       }
@@ -643,12 +683,8 @@
 
     const img = document.createElement('img');
     img.className = 'grid-image';
-    img.loading = 'lazy';
-    const imgUrl = new URL('/image', window.location.origin);
-    imgUrl.searchParams.set('mode', mode);
-    imgUrl.searchParams.set('rel_path', entry.rel_path);
-    if (data.img_dir) imgUrl.searchParams.set('img_dir', data.img_dir);
-    img.src = imgUrl.toString();
+    const imgUrl = _buildImageUrl(entry.rel_path);
+    img.src = imgUrl;
 
     const canvas = document.createElement('canvas');
     canvas.className = 'grid-overlay';
@@ -732,22 +768,22 @@
 
   // -- Optimization: Prefetching --
   function prefetchNextBatch() {
+      // 이전 prefetch 취소
+      if (_prefetchAbort) _prefetchAbort.abort();
+      _prefetchAbort = new AbortController();
+
       const nextIdx = currentIndex + BATCH_SIZE;
       if (nextIdx >= total) return;
-      
+
       const batch = images.slice(nextIdx, nextIdx + BATCH_SIZE);
       batch.forEach(entry => {
+          const url = _buildImageUrl(entry.rel_path);
+          if (_imgCache.has(url)) return; // 이미 캐시됨
           const img = new Image();
-          const url = new URL('/image', window.location.origin);
-          url.searchParams.set('mode', mode);
-          url.searchParams.set('rel_path', entry.rel_path);
-          if ((mode === 'folder' || mode === 'compare') && data.img_dir) {
-            url.searchParams.set('img_dir', data.img_dir);
-          } else if (mode === 'txt' && data.train_file) {
-            url.searchParams.set('train_file', data.train_file);
-            if (data.label_dir) url.searchParams.set('label_dir', data.label_dir);
-          }
-          img.src = url.toString();
+          img.src = url;
+          img.onload = () => _imgCachePut(url, img);
+          // 라벨도 미리 가져오기
+          if (!isCompareMode) _fetchLabelsWithCache(entry.rel_path);
       });
   }
 

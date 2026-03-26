@@ -1080,9 +1080,16 @@ window.openExportModal = () => {
     }
 
     // --- Interaction Helpers ---
+    let _cachedRect = null;
+    let _rafPending = false;
+    function _updateCachedRect() { _cachedRect = canvas.getBoundingClientRect(); }
+    _updateCachedRect();
+    window.addEventListener('resize', _updateCachedRect);
+    window.addEventListener('scroll', _updateCachedRect, true);
+
     function getMousePos(e) {
-        const rect = canvas.getBoundingClientRect();
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        if (!_cachedRect) _updateCachedRect();
+        return { x: e.clientX - _cachedRect.left, y: e.clientY - _cachedRect.top };
     }
 
     function getHandle(boxIdx, mx, my) {
@@ -1165,6 +1172,12 @@ window.openExportModal = () => {
     });
 
     canvas.addEventListener('mousemove', (e) => {
+        if (_rafPending) return;
+        _rafPending = true;
+        requestAnimationFrame(() => { _rafPending = false; _handleMouseMove(e); });
+    });
+
+    function _handleMouseMove(e) {
         const { x, y } = getMousePos(e);
 
         // Point Mode: draw crosshair + preview (only when not dragging/resizing)
@@ -1269,7 +1282,7 @@ window.openExportModal = () => {
             ctx.fillText(`${Math.abs(w).toFixed(0)} x ${Math.abs(h).toFixed(0)}`, drawStart.x, drawStart.y - 5);
             ctx.restore();
         }
-    });
+    }
 
     canvas.addEventListener('mouseup', (e) => {
         if (isDrawing) {

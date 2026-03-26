@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -8,14 +9,17 @@ import re
 import threading
 import time
 import zipfile
+from collections import OrderedDict
 from dataclasses import dataclass
+from email.utils import formatdate
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from urllib.parse import quote
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Header, Query, Request
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
@@ -82,6 +86,7 @@ if HOST_HOME:
 
 # --- App Init ---
 app = FastAPI(title="CV Data Viewer")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.on_event("startup")
@@ -94,6 +99,32 @@ async def startup_event():
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 LABEL_EXT = ".txt"
 DATASET_MODES = {"folder", "txt", "annotate", "compare"}
+
+# --- Performance Caches ---
+class LRUCache:
+    """Thread-safe LRU cache with maxsize."""
+    def __init__(self, maxsize: int = 256):
+        self._cache: OrderedDict = OrderedDict()
+        self._maxsize = maxsize
+        self._lock = threading.Lock()
+    def get(self, key):
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+        return None
+    def put(self, key, value):
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            else:
+                if len(self._cache) >= self._maxsize:
+                    self._cache.popitem(last=False)
+            self._cache[key] = value
+
+_THUMBNAIL_CACHE = LRUCache(maxsize=500)  # (path, w) -> bytes
+_PATH_CACHE = LRUCache(maxsize=512)       # raw_path -> Path
+_IMAGE_LIST_CACHE: Dict[str, Tuple[float, List[str]]] = {}  # cache_key -> (mtime, images)
 
 _HASH_RE = re.compile(r'_[0-9a-fA-F]{8}_')
 
@@ -126,10 +157,18 @@ _TXT_CACHE: Dict[Tuple[str, str], Tuple[float, List[TxtEntry], Dict[str, TxtEntr
 # --- Helper Functions ---
 def resolve_dataset_path(raw_path: str) -> Path:
     path_str = raw_path.strip()
+
+    # 캐시 체크
+    cached = _PATH_CACHE.get(path_str)
+    if cached is not None:
+        return cached
+
     candidate = Path(path_str)
 
     if candidate.exists():
-        return candidate.resolve()
+        result = candidate.resolve()
+        _PATH_CACHE.put(path_str, result)
+        return result
 
     # Windows 경로 정규화 후 매핑 시도
     norm_input = _normalize_win_path(path_str)
@@ -141,11 +180,10 @@ def resolve_dataset_path(raw_path: str) -> Path:
                     if test_str.startswith(pfx):
                         rel_part = test_str[len(pfx):].lstrip("/\\")
                         mapped = Path(container_prefix) / rel_part
-                        print(f"[DEBUG] Mapping: {test_str} -> {mapped}")
                         if mapped.exists():
-                            return mapped.resolve()
-                        else:
-                            print(f"[WARN] Mapped path does not exist: {mapped}")
+                            result = mapped.resolve()
+                            _PATH_CACHE.put(path_str, result)
+                            return result
     except Exception as e:
         print(f"[ERROR] Path resolution failed: {e}")
 
@@ -156,8 +194,9 @@ def resolve_dataset_path(raw_path: str) -> Path:
             rel_part = path_str[m.end():]
             direct = Path(CONTAINER_MOUNT) / rel_part
             if direct.exists():
-                print(f"[DEBUG] Direct mount mapping: {path_str} -> {direct}")
-                return direct.resolve()
+                result = direct.resolve()
+                _PATH_CACHE.put(path_str, result)
+                return result
 
     return candidate
 
@@ -234,8 +273,8 @@ def load_train_entries(train_file_path: Path, label_dir_path: Optional[Path] = N
     train_file_path = train_file_path.resolve()
     label_dir_str = str(label_dir_path.resolve()) if label_dir_path else "auto"
     cache_key = (str(train_file_path), label_dir_str)
-    mtime = train_file_path.stat().st_mtime
     cached = _TXT_CACHE.get(cache_key)
+    mtime = train_file_path.stat().st_mtime
     if cached and cached[0] == mtime:
         return cached[1]
 
@@ -300,14 +339,33 @@ def list_images(img_dir: Path, label_dir: Optional[Path] = None) -> List[str]:
     if not img_dir.exists():
         return []
 
-    all_imgs: List[Path] = []
-    depth_one = sorted(p for p in img_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
-    all_imgs.extend(depth_one)
-    for subdir in sorted(p for p in img_dir.iterdir() if p.is_dir()):
+    # 캐시 체크
+    cache_key = f"{img_dir}|{label_dir or ''}"
+    try:
+        dir_mtime = img_dir.stat().st_mtime
+        cached = _IMAGE_LIST_CACHE.get(cache_key)
+        if cached and cached[0] == dir_mtime:
+            return cached[1]
+    except OSError:
+        pass
+
+    # 한 번의 iterdir()로 파일/디렉터리 분류
+    files: List[Path] = []
+    subdirs: List[Path] = []
+    for p in img_dir.iterdir():
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+            files.append(p)
+        elif p.is_dir():
+            subdirs.append(p)
+
+    all_imgs = sorted(files)
+    for subdir in sorted(subdirs):
         all_imgs.extend(sorted(p for p in subdir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS))
 
     if not label_dir or not label_dir.exists():
-        return [str(p.relative_to(img_dir)) for p in all_imgs]
+        result = [str(p.relative_to(img_dir)) for p in all_imgs]
+        _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, result)
+        return result
 
     # 1단계: 정확 매칭
     images: List[str] = []
@@ -316,6 +374,7 @@ def list_images(img_dir: Path, label_dir: Optional[Path] = None) -> List[str]:
         if (label_dir / rel.with_suffix(LABEL_EXT)).is_file():
             images.append(str(rel))
     if images:
+        _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, images)
         return images
 
     # 2단계: 퍼지 매칭 (해시 제거 후 비교)
@@ -324,10 +383,13 @@ def list_images(img_dir: Path, label_dir: Optional[Path] = None) -> List[str]:
         if _find_fuzzy_label(label_dir, rel):
             images.append(str(rel))
     if images:
+        _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, images)
         return images
 
     # 3단계: 라벨 매칭 실패 시 전체 이미지 반환 (라벨 없이 보기)
-    return [str(p.relative_to(img_dir)) for p in all_imgs]
+    result = [str(p.relative_to(img_dir)) for p in all_imgs]
+    _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, result)
+    return result
 
 def collect_images(img_dir: Path, label_dir: Path) -> List[str]:
     return list_images(img_dir, label_dir)
@@ -636,6 +698,45 @@ def viewer(
 
     return TEMPLATES.TemplateResponse("viewer.html", {"request": request, "data_json": json.dumps(data)})
 
+def _resolve_image_path(mode: str, rel_path: str, img_dir: Optional[str],
+                         train_file: Optional[str], label_dir: Optional[str]) -> Path:
+    """공통 이미지 경로 해석 (image, thumbnail 공용)"""
+    if mode in ("folder", "compare"):
+        if not img_dir: raise HTTPException(400, "Image dir required")
+        img_path = resolve_dataset_path(img_dir) / rel_path
+        if img_path.exists():
+            return img_path
+    else:  # txt mode
+        if not train_file: raise HTTPException(400, "Train file required")
+        train_file_path = resolve_dataset_path(train_file)
+        label_dir_path = resolve_dataset_path(label_dir) if label_dir else None
+        entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
+        if entry and entry.image_path.is_file():
+            return entry.image_path
+        candidate = resolve_path_with_base(rel_path, train_file_path.parent)
+        if candidate.exists():
+            return candidate
+    raise HTTPException(404, f"Image not found: {rel_path}")
+
+def _make_etag(stat_result) -> str:
+    return f'"{stat_result.st_mtime_ns}-{stat_result.st_size}"'
+
+def _cached_file_response(img_path: Path, if_none_match: Optional[str] = None,
+                           max_age: int = 3600) -> Response:
+    """ETag + Cache-Control 지원 FileResponse"""
+    st = img_path.stat()
+    etag = _make_etag(st)
+    if if_none_match and if_none_match.strip() == etag:
+        return Response(status_code=304)
+    return FileResponse(
+        img_path,
+        headers={
+            "ETag": etag,
+            "Cache-Control": f"public, max-age={max_age}",
+            "Last-Modified": formatdate(st.st_mtime, usegmt=True),
+        }
+    )
+
 @app.get("/image")
 def get_image(
     mode: str = Query("folder"),
@@ -643,32 +744,85 @@ def get_image(
     img_dir: Optional[str] = Query(None),
     train_file: Optional[str] = Query(None),
     label_dir: Optional[str] = Query(None),
+    if_none_match: Optional[str] = Header(None),
 ):
     mode = (mode or "folder").lower()
     try:
-        if mode in ("folder", "compare"):
-            if not img_dir: raise HTTPException(400, "Image dir required")
-            img_dir_path = resolve_dataset_path(img_dir)
-            img_path = img_dir_path / rel_path
-            if img_path.exists():
-                return FileResponse(img_path)
-        else:  # txt mode
-            if not train_file: raise HTTPException(400, "Train file required")
-            train_file_path = resolve_dataset_path(train_file)
-            label_dir_path = resolve_dataset_path(label_dir) if label_dir else None
-            entry = get_train_entry_by_rel(train_file_path, label_dir_path, rel_path)
-            if entry and entry.image_path.is_file():
-                return FileResponse(entry.image_path)
-            
-            # Fallback
-            candidate = resolve_path_with_base(rel_path, train_file_path.parent)
-            if candidate.exists():
-                return FileResponse(candidate)
-                
-        raise HTTPException(404, f"Image not found: {rel_path}")
+        img_path = _resolve_image_path(mode, rel_path, img_dir, train_file, label_dir)
+        return _cached_file_response(img_path, if_none_match, max_age=3600)
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] get_image: {e}")
         raise HTTPException(404, "Image not found")
+
+@app.get("/thumbnail")
+def get_thumbnail(
+    mode: str = Query("folder"),
+    rel_path: str = Query(...),
+    img_dir: Optional[str] = Query(None),
+    train_file: Optional[str] = Query(None),
+    label_dir: Optional[str] = Query(None),
+    w: int = Query(800),
+    if_none_match: Optional[str] = Header(None),
+):
+    """썸네일 생성 (인메모리 LRU 캐시). 그리드 뷰용."""
+    mode = (mode or "folder").lower()
+    w = min(max(w, 100), 1920)  # clamp
+    try:
+        img_path = _resolve_image_path(mode, rel_path, img_dir, train_file, label_dir)
+        st = img_path.stat()
+        etag = f'"{st.st_mtime_ns}-{st.st_size}-{w}"'
+
+        if if_none_match and if_none_match.strip() == etag:
+            return Response(status_code=304)
+
+        cache_key = (str(img_path), w)
+        cached_data = _THUMBNAIL_CACHE.get(cache_key)
+
+        # 캐시 히트 시 mtime 검증
+        if cached_data and cached_data[0] == st.st_mtime_ns:
+            return Response(
+                content=cached_data[1],
+                media_type="image/jpeg",
+                headers={
+                    "ETag": etag,
+                    "Cache-Control": "public, max-age=86400",
+                    "Last-Modified": formatdate(st.st_mtime, usegmt=True),
+                },
+            )
+
+        # 썸네일 생성
+        with Image.open(img_path) as img:
+            img_w, img_h = img.size
+            if img_w <= w:
+                # 원본이 충분히 작으면 그대로 서빙
+                return _cached_file_response(img_path, if_none_match, max_age=86400)
+            ratio = w / img_w
+            new_h = int(img_h * ratio)
+            thumb = img.resize((w, new_h), Image.LANCZOS)
+            if thumb.mode in ("RGBA", "P"):
+                thumb = thumb.convert("RGB")
+            buf = io.BytesIO()
+            thumb.save(buf, format="JPEG", quality=85, optimize=True)
+            thumb_bytes = buf.getvalue()
+
+        _THUMBNAIL_CACHE.put(cache_key, (st.st_mtime_ns, thumb_bytes))
+
+        return Response(
+            content=thumb_bytes,
+            media_type="image/jpeg",
+            headers={
+                "ETag": etag,
+                "Cache-Control": "public, max-age=86400",
+                "Last-Modified": formatdate(st.st_mtime, usegmt=True),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] get_thumbnail: {e}")
+        raise HTTPException(404, "Thumbnail generation failed")
 
 @app.get("/api/labels")
 def get_labels(

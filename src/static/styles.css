@@ -477,11 +477,22 @@ input[type="text"]:focus {
   border-color: var(--accent);
 }
 
-/* Hover Effect for ALL grid items (including highlighted) */
+/* Hover Effect - GPU-friendly (no filter recomposite) */
+.grid-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 15;
+}
+.grid-item:hover::after {
+  opacity: 1;
+}
 .grid-item:hover {
-  /* Slightly brighten the image and border to indicate interactivity */
-  filter: brightness(1.2);
-  z-index: 10; /* Bring to front slightly */
+  z-index: 10;
 }
 
 /* Search Highlight State */
