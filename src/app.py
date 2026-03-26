@@ -58,13 +58,13 @@ def get_yolo_model(model_name: str = "yolo12x"):
         print(f"[ERROR] Failed to load YOLO model: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
 
-# --- Data Roots (Modified for user env) ---
-HOST_HOME = "/Users/jihunjang"
+# --- Data Roots ---
+HOST_HOME = os.environ.get("HOST_HOME", "")
 CONTAINER_MOUNT = "/host"
 
-PATH_MAPPINGS: List[Tuple[str, str]] = [
-    (HOST_HOME, CONTAINER_MOUNT),
-]
+PATH_MAPPINGS: List[Tuple[str, str]] = []
+if HOST_HOME:
+    PATH_MAPPINGS.append((HOST_HOME, CONTAINER_MOUNT))
 
 # --- App Init ---
 app = FastAPI(title="CV Data Viewer")
