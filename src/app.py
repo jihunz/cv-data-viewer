@@ -63,9 +63,22 @@ def get_yolo_model(model_name: str = "yolo12x"):
 HOST_HOME = os.environ.get("HOST_HOME", "")
 CONTAINER_MOUNT = "/host"
 
+# Windows 경로 패턴 (C:, D: 등) -> 컨테이너 내부 /host 매핑용 정규화
+_WIN_DRIVE_RE = re.compile(r'^([A-Za-z]):[/\\]+')
+
+def _normalize_win_path(p: str) -> str:
+    """C://Users/foo -> /c/Users/foo (docker-style)"""
+    m = _WIN_DRIVE_RE.match(p)
+    if m:
+        p = '/' + m.group(1).lower() + '/' + p[m.end():]
+    return p.replace('\\', '/')
+
 PATH_MAPPINGS: List[Tuple[str, str]] = []
 if HOST_HOME:
     PATH_MAPPINGS.append((HOST_HOME, CONTAINER_MOUNT))
+    norm = _normalize_win_path(HOST_HOME)
+    if norm != HOST_HOME:
+        PATH_MAPPINGS.append((norm, CONTAINER_MOUNT))
 
 # --- App Init ---
 app = FastAPI(title="CV Data Viewer")
@@ -118,19 +131,33 @@ def resolve_dataset_path(raw_path: str) -> Path:
     if candidate.exists():
         return candidate.resolve()
 
+    # Windows 경로 정규화 후 매핑 시도
+    norm_input = _normalize_win_path(path_str)
     try:
-        input_str = str(Path(path_str).expanduser().resolve())
         for host_prefix, container_prefix in PATH_MAPPINGS:
-            if input_str.startswith(host_prefix):
-                rel_part = input_str[len(host_prefix):].lstrip("/")
-                mapped = Path(container_prefix) / rel_part
-                print(f"[DEBUG] Mapping: {input_str} -> {mapped}")
-                if mapped.exists():
-                    return mapped.resolve()
-                else:
-                    print(f"[WARN] Mapped path does not exist: {mapped}")
+            for test_str in (path_str, norm_input):
+                norm_prefix = _normalize_win_path(host_prefix)
+                for pfx in (host_prefix, norm_prefix):
+                    if test_str.startswith(pfx):
+                        rel_part = test_str[len(pfx):].lstrip("/\\")
+                        mapped = Path(container_prefix) / rel_part
+                        print(f"[DEBUG] Mapping: {test_str} -> {mapped}")
+                        if mapped.exists():
+                            return mapped.resolve()
+                        else:
+                            print(f"[WARN] Mapped path does not exist: {mapped}")
     except Exception as e:
         print(f"[ERROR] Path resolution failed: {e}")
+
+    # 매핑 실패 시 /host 직접 시도
+    if norm_input != path_str:
+        m = _WIN_DRIVE_RE.match(path_str)
+        if m:
+            rel_part = path_str[m.end():]
+            direct = Path(CONTAINER_MOUNT) / rel_part
+            if direct.exists():
+                print(f"[DEBUG] Direct mount mapping: {path_str} -> {direct}")
+                return direct.resolve()
 
     return candidate
 
