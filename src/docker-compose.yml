@@ -9,4 +9,4 @@ services:
       - ${HOST_PATH}:/host
     environment:
       - PYTHONPATH=/app
-      - HOST_HOME=${HOST_PATH}
+      - HOST_PATH=${HOST_PATH}

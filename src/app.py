@@ -60,7 +60,7 @@ def get_yolo_model(model_name: str = "yolo12x"):
         raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
 
 # --- Data Roots ---
-HOST_HOME = os.environ.get("HOST_HOME", "")
+HOST_PATH = os.environ.get("HOST_PATH", "")
 CONTAINER_MOUNT = "/host"
 
 # Windows 경로 패턴 (C:, D: 등) -> 컨테이너 내부 /host 매핑용 정규화
@@ -74,10 +74,10 @@ def _normalize_win_path(p: str) -> str:
     return p.replace('\\', '/')
 
 PATH_MAPPINGS: List[Tuple[str, str]] = []
-if HOST_HOME:
-    PATH_MAPPINGS.append((HOST_HOME, CONTAINER_MOUNT))
-    norm = _normalize_win_path(HOST_HOME)
-    if norm != HOST_HOME:
+if HOST_PATH:
+    PATH_MAPPINGS.append((HOST_PATH, CONTAINER_MOUNT))
+    norm = _normalize_win_path(HOST_PATH)
+    if norm != HOST_PATH:
         PATH_MAPPINGS.append((norm, CONTAINER_MOUNT))
 
 # --- App Init ---
