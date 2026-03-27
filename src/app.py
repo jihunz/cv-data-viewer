@@ -1111,7 +1111,7 @@ def scan_progress(
 
         while True:
             try:
-                msg = q_progress.get(timeout=30)
+                msg = q_progress.get(timeout=3600)
             except Exception:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Scan timeout'})}\n\n"
                 return
