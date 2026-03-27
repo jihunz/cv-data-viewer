@@ -388,9 +388,11 @@
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);
                     if (data.status === 'progress') {
-                        progressBar.style.width = `${data.progress}%`;
-                        const etaTxt = data.eta != null ? ` (ETA ${data.eta}s)` : '';
-                        percentText.textContent = `${data.progress}%${etaTxt}`;
+                        if (data.progress >= 0) {
+                            progressBar.style.width = `${data.progress}%`;
+                            const etaTxt = data.eta != null ? ` (ETA ${data.eta}s)` : '';
+                            percentText.textContent = `${data.progress}%${etaTxt}`;
+                        }
                     } else if (data.status === 'done') {
                         progressBar.style.width = '100%';
                         percentText.textContent = `100% (elapsed ${data.elapsed}s)`;
@@ -457,12 +459,14 @@
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.status === 'progress') {
-                    progressBar.style.width = `${data.progress}%`;
-                    const etaTxt = data.eta != null ? ` (ETA ${data.eta}s)` : '';
-                    percentText.textContent = `${data.progress}%${etaTxt}`;
+                    if (data.progress >= 0) {
+                        progressBar.style.width = `${data.progress}%`;
+                        const etaTxt = data.eta != null ? ` (ETA ${data.eta}s)` : '';
+                        percentText.textContent = `${data.progress}%${etaTxt}`;
+                    }
                 } else if (data.status === 'done') {
                     progressBar.style.width = '100%';
-                    percentText.textContent = `100% (elapsed ${data.elapsed}s)`; 
+                    percentText.textContent = `100% (elapsed ${data.elapsed}s)`;
                     eventSource.close();
                     eventSource = null;
                     setTimeout(() => {

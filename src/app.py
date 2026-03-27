@@ -124,14 +124,31 @@ class LRUCache:
 
 _THUMBNAIL_CACHE = LRUCache(maxsize=500)  # (path, w) -> bytes
 _PATH_CACHE = LRUCache(maxsize=512)       # raw_path -> Path
-_IMAGE_LIST_CACHE: Dict[str, Tuple[float, List[str]]] = {}  # cache_key -> (mtime, images)
+_IMAGE_LIST_CACHE: Dict[str, List[str]] = {}  # cache_key -> images
 
 _HASH_RE = re.compile(r'_[0-9a-fA-F]{8}_')
 
-def _scandir_images_recursive(root: Path) -> List[Path]:
-    """os.scandir 기반 재귀 이미지 수집. Path.rglob보다 2~3배 빠름."""
+def _cache_key(img_dir: Path, label_dir: Optional[Path] = None) -> str:
+    """캐시 키를 resolve된 절대경로로 통일."""
+    try:
+        k = str(img_dir.resolve())
+    except OSError:
+        k = str(img_dir)
+    if label_dir:
+        try:
+            k += "|" + str(label_dir.resolve())
+        except OSError:
+            k += "|" + str(label_dir)
+    return k
+
+def _scandir_images_recursive(root: Path, progress_cb=None,
+                               progress_start: int = 0, progress_end: int = 100) -> List[Path]:
+    """os.scandir 기반 재귀 이미지 수집. Path.rglob보다 2~3배 빠름.
+    progress_cb(progress_int) 호출로 진행률 전달 가능."""
     result: List[Path] = []
     stack = [root]
+    dirs_done = 0
+    last_report = 0
     while stack:
         d = stack.pop()
         try:
@@ -142,6 +159,14 @@ def _scandir_images_recursive(root: Path) -> List[Path]:
                     stack.append(Path(entry.path))
         except PermissionError:
             pass
+        dirs_done += 1
+        # 진행률 콜백: 100디렉터리마다 보고
+        if progress_cb and dirs_done - last_report >= 100:
+            last_report = dirs_done
+            # 남은 스택 기준 추정 (정확하지 않지만 UI 반응용)
+            total_est = dirs_done + len(stack)
+            pct = progress_start + (dirs_done * (progress_end - progress_start)) // max(total_est, 1)
+            progress_cb(min(pct, progress_end - 1))
     return result
 
 def _normalize_stem(stem: str) -> str:
@@ -355,36 +380,18 @@ def list_images(img_dir: Path, label_dir: Optional[Path] = None) -> List[str]:
     if not img_dir.exists():
         return []
 
-    # 캐시 체크
-    cache_key = f"{img_dir}|{label_dir or ''}"
-    try:
-        dir_mtime = img_dir.stat().st_mtime
-        cached = _IMAGE_LIST_CACHE.get(cache_key)
-        if cached and cached[0] == dir_mtime:
-            return cached[1]
-    except OSError:
-        pass
+    # 캐시 체크 (mtime 비교 없이 — 같은 세션 내 즉시 반환)
+    ck = _cache_key(img_dir, label_dir)
+    cached = _IMAGE_LIST_CACHE.get(ck)
+    if cached is not None:
+        return cached
 
-    # os.scandir 기반 고속 파일 수집 (stat 재활용)
-    files: List[Path] = []
-    subdirs: List[Path] = []
-    for entry in os.scandir(img_dir):
-        if entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS:
-            files.append(Path(entry.path))
-        elif entry.is_dir(follow_symlinks=False):
-            subdirs.append(Path(entry.path))
-
-    all_imgs = sorted(files)
-    for subdir in sorted(subdirs):
-        sub_files = []
-        for entry in os.scandir(subdir):
-            if entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS:
-                sub_files.append(Path(entry.path))
-        all_imgs.extend(sorted(sub_files))
+    # os.scandir 재귀 (깊은 중첩 구조 지원)
+    all_imgs = sorted(_scandir_images_recursive(img_dir))
 
     if not label_dir or not label_dir.exists():
         result = [str(p.relative_to(img_dir)) for p in all_imgs]
-        _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, result)
+        _IMAGE_LIST_CACHE[ck] = result
         return result
 
     # 1단계: 정확 매칭
@@ -394,21 +401,21 @@ def list_images(img_dir: Path, label_dir: Optional[Path] = None) -> List[str]:
         if (label_dir / rel.with_suffix(LABEL_EXT)).is_file():
             images.append(str(rel))
     if images:
-        _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, images)
+        _IMAGE_LIST_CACHE[ck] = images
         return images
 
-    # 2단계: 퍼지 매칭 (해시 제거 후 비교)
+    # 2단계: 퍼지 매칭
     for img_path in all_imgs:
         rel = img_path.relative_to(img_dir)
         if _find_fuzzy_label(label_dir, rel):
             images.append(str(rel))
     if images:
-        _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, images)
+        _IMAGE_LIST_CACHE[ck] = images
         return images
 
-    # 3단계: 라벨 매칭 실패 시 전체 이미지 반환 (라벨 없이 보기)
+    # 3단계: 라벨 매칭 실패 → 전체 이미지 반환
     result = [str(p.relative_to(img_dir)) for p in all_imgs]
-    _IMAGE_LIST_CACHE[cache_key] = (dir_mtime, result)
+    _IMAGE_LIST_CACHE[ck] = result
     return result
 
 def collect_images(img_dir: Path, label_dir: Path) -> List[str]:
@@ -1256,26 +1263,12 @@ def scan_progress(
                 if lbl_path and not lbl_path.exists():
                     lbl_path = None
                 q.put({"status": "progress", "progress": 10})
-                # os.scandir 기반 고속 파일 수집 (중간 진행률 전송)
-                files: List[Path] = []
-                subdirs_list: List[Path] = []
-                for entry in os.scandir(img_path):
-                    if entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS:
-                        files.append(Path(entry.path))
-                    elif entry.is_dir(follow_symlinks=False):
-                        subdirs_list.append(Path(entry.path))
-                q.put({"status": "progress", "progress": 30})
-                all_imgs = sorted(files)
-                total_subs = len(subdirs_list)
-                for si, subdir in enumerate(sorted(subdirs_list)):
-                    sub_files = []
-                    for entry in os.scandir(subdir):
-                        if entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS:
-                            sub_files.append(Path(entry.path))
-                    all_imgs.extend(sorted(sub_files))
-                    if total_subs > 0 and (si + 1) % max(1, total_subs // 5) == 0:
-                        q.put({"status": "progress", "progress": 30 + (si + 1) * 40 // total_subs})
-                q.put({"status": "progress", "progress": 70})
+                # os.scandir 재귀 수집 + 진행률 콜백
+                def _progress_cb(pct):
+                    q.put({"status": "progress", "progress": pct})
+                all_imgs = sorted(_scandir_images_recursive(
+                    img_path, progress_cb=_progress_cb, progress_start=10, progress_end=60))
+                q.put({"status": "progress", "progress": 60})
                 if not lbl_path or not lbl_path.exists():
                     images = [str(p.relative_to(img_path)) for p in all_imgs]
                 else:
@@ -1291,12 +1284,8 @@ def scan_progress(
                                 images.append(str(rel))
                     if not images:
                         images = [str(p.relative_to(img_path)) for p in all_imgs]
-                # 캐시에 저장 → /viewer에서 재스캔 방지
-                cache_key = f"{img_path}|{lbl_path or ''}"
-                try:
-                    _IMAGE_LIST_CACHE[cache_key] = (img_path.stat().st_mtime, images)
-                except OSError:
-                    pass
+                # 캐시에 저장 → /viewer에서 재스캔 완전 방지
+                _IMAGE_LIST_CACHE[_cache_key(img_path, lbl_path)] = images
             else:
                 if not train_file:
                     q.put({"status": "error", "message": "Missing train file"}); return
@@ -1323,7 +1312,11 @@ def scan_progress(
 
         while True:
             try:
-                msg = q_progress.get(timeout=300)
+                msg = q_progress.get(timeout=10)
+            except queue.Empty:
+                # heartbeat: SSE 연결 유지 (프록시/브라우저 타임아웃 방지)
+                yield f"data: {json.dumps({'status': 'progress', 'progress': -1})}\n\n"
+                continue
             except Exception:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Scan timeout'})}\n\n"
                 return
